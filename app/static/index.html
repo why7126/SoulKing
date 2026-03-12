@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Personal Music MVP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Local-first Music Library</p>
+        <h1>个人音乐管理平台</h1>
+      </div>
+      <div class="page-actions">
+        <button id="goAdminBtn" class="btn btn-primary nav-btn" type="button">进入后台</button>
+      </div>
+    </header>
+
+    <main class="layout front-layout">
+      <aside class="panel sidebar-panel">
+        <div class="playlist-header">
+          <h2>歌单列表</h2>
+          <button id="createPlaylistBtn" class="btn">新建歌单</button>
+        </div>
+        <div id="playlistList" class="playlist-list"></div>
+      </aside>
+
+      <section class="panel song-panel front-song-panel">
+        <div class="toolbar front-filter-toolbar">
+          <input id="keywordInput" type="text" placeholder="搜索歌名 / 艺人 / 专辑" />
+          <select id="formatSelect"></select>
+          <select id="tagSelect"></select>
+          <select id="languageSelect"></select>
+        </div>
+        <div id="songList" class="song-list front-song-list"></div>
+      </section>
+    </main>
+
+    <footer class="player panel">
+      <div class="now-playing-block">
+        <div class="now-playing">
+          <span class="muted">正在播放</span>
+          <strong id="nowPlaying">暂无</strong>
+        </div>
+        <div class="player-controls">
+          <button id="prevBtn" class="btn">上一首</button>
+          <button id="nextBtn" class="btn">下一首</button>
+          <button id="playPlaylistBtn" class="btn">播放歌单</button>
+          <select id="playModeSelect">
+            <option value="list-loop">列表循环</option>
+            <option value="single-loop">单曲循环</option>
+            <option value="shuffle">随机播放</option>
+            <option value="sequence">顺序播放</option>
+          </select>
+        </div>
+      </div>
+      <audio id="audioPlayer" controls preload="metadata"></audio>
+    </footer>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="modalTitle">提示</h3>
+          <button id="modalCloseBtn" class="btn modal-x-btn" type="button">X</button>
+        </div>
+        <p id="modalMessage" class="muted"></p>
+        <div id="modalInputWrap" class="hidden">
+          <input id="modalInput" type="text" placeholder="请输入内容" />
+        </div>
+        <div id="modalSelectWrap" class="hidden">
+          <select id="modalSelect"></select>
+        </div>
+        <div class="modal-actions">
+          <button id="modalCancelBtn" class="btn" type="button">取消</button>
+          <button id="modalConfirmBtn" class="btn btn-primary" type="button">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/static/frontend.js?v=4"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+.env
+.env.local
+.DS_Store
+data/
+minio-data/
+loc_start.md
+__pycache__/
+*.pyc
+.pytest_cache/

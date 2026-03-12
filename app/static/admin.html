@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>音乐后台管理</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body class="admin-body admin-table-body">
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
+    <header class="topbar admin-navbar">
+      <div class="admin-navbar-left">
+        <p class="eyebrow">Admin</p>
+        <h1 class="admin-title">音乐管理后台</h1>
+      </div>
+      <nav class="admin-nav">
+        <a href="#" id="adminNavMusic" class="admin-nav-item active" data-page="music">音乐管理</a>
+        <a href="#" id="adminNavPeople" class="admin-nav-item" data-page="people">艺人管理</a>
+        <a href="#" id="adminNavTags" class="admin-nav-item" data-page="tags">标签管理</a>
+        <a href="#" id="adminNavLanguage" class="admin-nav-item" data-page="language">语言管理</a>
+      </nav>
+      <div class="admin-nav-right">
+        <button id="goFrontendBtn" class="btn btn-primary nav-btn" type="button">返回前台</button>
+      </div>
+    </header>
+
+    <input id="directoryPicker" type="file" webkitdirectory directory multiple class="hidden" />
+
+    <main class="admin-main">
+      <!-- 音乐管理页：当前页，含扫描目录与歌曲列表 -->
+      <section id="admin-page-music" class="admin-page active">
+        <div class="admin-table-layout">
+          <section class="panel admin-toolbar-panel">
+            <div class="admin-search-row">
+              <input id="keywordInput" type="text" placeholder="搜索歌名 / 艺人 / 专辑" />
+              <button id="toggleFilterBtn" class="btn" type="button">展开筛选</button>
+            </div>
+            <div id="filterSection" class="admin-filter-section hidden">
+              <div class="admin-filter-grid admin-filter-grid-four">
+                <label><span>主唱</span><select id="leadArtistFilter"></select></label>
+                <label><span>合唱</span><select id="chorusArtistFilter"></select></label>
+                <label><span>作词</span><select id="lyricistFilter"></select></label>
+                <label><span>作曲</span><select id="composerFilter"></select></label>
+              </div>
+              <div class="admin-filter-grid admin-filter-grid-three">
+                <label><span>文件格式</span><select id="formatFilter"></select></label>
+                <label><span>标签</span><select id="tagFilter"></select></label>
+                <label><span>语言</span><select id="languageFilter"></select></label>
+                <div class="admin-filter-spacer"></div>
+              </div>
+            </div>
+            <p id="scanSummary" class="song-meta">尚未执行扫描</p>
+            <div class="admin-music-actions">
+              <button id="scanBtn" class="btn btn-primary" type="button">扫描目录</button>
+            </div>
+          </section>
+          <section class="panel admin-table-panel">
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th><button class="sort-btn" data-sort="title" type="button">歌曲名</button></th>
+                    <th><button class="sort-btn" data-sort="lead_artist" type="button">主唱</button></th>
+                    <th><button class="sort-btn" data-sort="chorus_artist" type="button">合唱</button></th>
+                    <th><button class="sort-btn" data-sort="lyricists" type="button">作词</button></th>
+                    <th><button class="sort-btn" data-sort="composers" type="button">作曲</button></th>
+                    <th><button class="sort-btn" data-sort="album" type="button">专辑</button></th>
+                    <th><button class="sort-btn" data-sort="language" type="button">语言</button></th>
+                    <th><button class="sort-btn" data-sort="tags" type="button">标签</button></th>
+                    <th><button class="sort-btn" data-sort="release_date" type="button">发布日期</button></th>
+                    <th><button class="sort-btn" data-sort="duration_ms" type="button">时长</button></th>
+                    <th><button class="sort-btn" data-sort="file_format" type="button">文件格式</button></th>
+                    <th><button class="sort-btn" data-sort="file_size" type="button">文件大小</button></th>
+                    <th><button class="sort-btn" data-sort="created_at" type="button">创建时间</button></th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="songTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <footer class="player panel admin-player">
+          <div class="now-playing-block admin-now-playing-block">
+            <div class="now-playing">
+              <span class="muted">正在播放</span>
+              <strong id="adminNowPlaying">暂无</strong>
+            </div>
+            <div class="player-controls">
+              <button id="adminPrevBtn" class="btn" type="button">上一首</button>
+              <button id="adminNextBtn" class="btn" type="button">下一首</button>
+              <select id="adminPlayModeSelect">
+                <option value="list-loop">列表循环</option>
+                <option value="single-loop">单曲循环</option>
+                <option value="shuffle">随机播放</option>
+                <option value="sequence">顺序播放</option>
+              </select>
+            </div>
+            <div class="admin-audio-wrap">
+              <audio id="adminAudioPlayer" controls preload="metadata"></audio>
+            </div>
+          </div>
+        </footer>
+      </section>
+
+      <!-- 艺人管理页 -->
+      <section id="admin-page-people" class="admin-page hidden">
+        <div class="admin-subpage">
+          <div class="manager-toolbar">
+            <input id="peopleSearchInput" type="text" placeholder="搜索艺人" />
+            <button id="peopleNewBtn" class="btn btn-primary" type="button">新建艺人</button>
+          </div>
+          <div id="peopleManagerList" class="tag-manager-list"></div>
+        </div>
+      </section>
+
+      <!-- 标签管理页 -->
+      <section id="admin-page-tags" class="admin-page hidden">
+        <div class="admin-subpage">
+          <div class="manager-toolbar">
+            <input id="tagSearchInput" type="text" placeholder="搜索标签" />
+            <button id="tagNewBtn" class="btn btn-primary" type="button">新建标签</button>
+          </div>
+          <div id="tagManagerList" class="tag-manager-list"></div>
+        </div>
+      </section>
+
+      <!-- 语言管理页 -->
+      <section id="admin-page-language" class="admin-page hidden">
+        <div class="admin-subpage">
+          <div class="manager-toolbar">
+            <input id="languageSearchInput" type="text" placeholder="搜索语言" />
+            <button id="languageNewBtn" class="btn btn-primary" type="button">新建语言</button>
+          </div>
+          <div id="languageManagerList" class="tag-manager-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="modalTitle">提示</h3>
+          <button id="modalCloseBtn" class="btn modal-x-btn">X</button>
+        </div>
+        <p id="modalMessage" class="muted"></p>
+        <div id="modalInputWrap">
+          <input id="modalInput" type="text" placeholder="请输入内容" />
+        </div>
+        <div class="modal-actions">
+          <button id="modalCancelBtn" class="btn">取消</button>
+          <button id="modalConfirmBtn" class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="editOverlay" class="modal-overlay hidden">
+      <div class="modal-card edit-modal-card">
+        <div class="modal-head">
+          <h3>编辑歌曲元数据</h3>
+          <button id="editCloseBtn" class="btn modal-x-btn">X</button>
+        </div>
+        <form id="metadataForm" class="metadata-form">
+          <div class="form-grid">
+            <div class="form-field"><span>歌曲名</span><input id="titleInput" type="text" /></div>
+            <div class="form-field"><span>主唱</span><div class="inline-artist-field"><div id="leadArtistInput" class="multi-select"></div></div></div>
+            <div class="form-field"><span>合唱</span><div class="inline-artist-field"><div id="chorusArtistInput" class="multi-select"></div></div></div>
+            <div class="form-field"><span>作词</span><div class="inline-artist-field"><div id="lyricistInput" class="multi-select"></div></div></div>
+            <div class="form-field"><span>作曲</span><div class="inline-artist-field"><div id="composerInput" class="multi-select"></div></div></div>
+            <div class="form-field"><span>专辑</span><input id="albumInput" type="text" /></div>
+            <div class="form-field"><span>时长（毫秒）</span><input id="durationInput" type="number" min="0" /></div>
+            <div class="form-field"><span>语言</span><select id="languageInput"></select></div>
+            <div class="form-field"><span>发布日期</span><input id="releaseDateInput" type="date" /></div>
+          </div>
+          <div class="tag-picker-wrap">
+            <p class="song-meta">歌曲标签</p>
+            <div id="singleTagOptions" class="tag-options"></div>
+          </div>
+          <div id="variantList" class="variant-list"></div>
+          <div class="modal-actions form-actions">
+            <button id="editCancelBtn" type="button" class="btn">取消</button>
+            <button id="saveMetadataBtn" type="submit" class="btn btn-primary">保存元数据</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 新建弹窗：标签 / 语言 / 艺人共用 -->
+    <div id="createOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="createModalTitle">新建</h3>
+          <button id="createCloseBtn" class="btn modal-x-btn">X</button>
+        </div>
+        <form id="createForm" class="create-form">
+          <div id="createFormBody"></div>
+          <div class="modal-actions">
+            <button id="createCancelBtn" type="button" class="btn">取消</button>
+            <button id="createSubmitBtn" type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="/static/admin.js?v=5"></script>
+  </body>
+</html>
