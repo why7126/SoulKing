@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>音乐后台管理</title>
+    <title>SoulKing 音乐管理后台</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
@@ -13,23 +13,28 @@
     <div class="bg-orb orb-1"></div>
     <div class="bg-orb orb-2"></div>
 
-    <header class="topbar admin-navbar">
-      <div class="admin-navbar-left">
-        <p class="eyebrow">Admin</p>
-        <h1 class="admin-title">音乐管理后台</h1>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="/static/logo.png" alt="SoulKing" class="brand-icon" />
+        <div>
+          <p class="eyebrow">Admin</p>
+          <h1>SoulKing 音乐管理后台</h1>
+        </div>
       </div>
       <nav class="admin-nav">
         <a href="#" id="adminNavMusic" class="admin-nav-item active" data-page="music">音乐管理</a>
         <a href="#" id="adminNavPeople" class="admin-nav-item" data-page="people">艺人管理</a>
         <a href="#" id="adminNavTags" class="admin-nav-item" data-page="tags">标签管理</a>
         <a href="#" id="adminNavLanguage" class="admin-nav-item" data-page="language">语言管理</a>
+        <a href="#" id="adminNavGenre" class="admin-nav-item" data-page="genre">风格管理</a>
       </nav>
-      <div class="admin-nav-right">
+      <div class="page-actions">
         <button id="goFrontendBtn" class="btn btn-primary nav-btn" type="button">返回前台</button>
       </div>
     </header>
 
-    <input id="directoryPicker" type="file" webkitdirectory directory multiple class="hidden" />
+            <input id="directoryPicker" type="file" webkitdirectory directory multiple class="hidden" />
+            <input id="songFilePicker" type="file" accept="audio/*" multiple class="hidden" />
 
     <main class="admin-main">
       <!-- 音乐管理页：当前页，含扫描目录与歌曲列表 -->
@@ -47,16 +52,32 @@
                 <label><span>作词</span><select id="lyricistFilter"></select></label>
                 <label><span>作曲</span><select id="composerFilter"></select></label>
               </div>
-              <div class="admin-filter-grid admin-filter-grid-three">
+              <div class="admin-filter-grid admin-filter-grid-four">
                 <label><span>文件格式</span><select id="formatFilter"></select></label>
                 <label><span>标签</span><select id="tagFilter"></select></label>
                 <label><span>语言</span><select id="languageFilter"></select></label>
-                <div class="admin-filter-spacer"></div>
+                <label><span>风格</span><select id="genreFilter"></select></label>
+              </div>
+            </div>
+            <div id="scanProgressWrap" class="scan-progress-wrap hidden">
+              <div class="scan-progress-info">
+                <span id="scanProgressText">正在扫描...</span>
+                <span id="scanProgressStats"></span>
+              </div>
+              <div class="scan-progress-bar">
+                <div id="scanProgressFill" class="scan-progress-fill"></div>
+              </div>
+              <div class="scan-progress-time">
+                <span id="scanElapsedTime">已耗时: 0秒</span>
+                <span id="scanEstimatedTime">预计剩余: --</span>
               </div>
             </div>
             <p id="scanSummary" class="song-meta">尚未执行扫描</p>
             <div class="admin-music-actions">
               <button id="scanBtn" class="btn btn-primary" type="button">扫描目录</button>
+              <button id="addSongsBtn" class="btn btn-primary" type="button">添加歌曲</button>
+              <button id="batchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
+              <button id="batchDownloadBtn" class="btn hidden" type="button">批量下载</button>
             </div>
           </section>
           <section class="panel admin-table-panel">
@@ -64,6 +85,8 @@
               <table class="admin-table">
                 <thead>
                   <tr>
+                    <th><input type="checkbox" id="selectAllSongs" /></th>
+                    <th>#</th>
                     <th><button class="sort-btn" data-sort="title" type="button">歌曲名</button></th>
                     <th><button class="sort-btn" data-sort="lead_artist" type="button">主唱</button></th>
                     <th><button class="sort-btn" data-sort="chorus_artist" type="button">合唱</button></th>
@@ -71,6 +94,7 @@
                     <th><button class="sort-btn" data-sort="composers" type="button">作曲</button></th>
                     <th><button class="sort-btn" data-sort="album" type="button">专辑</button></th>
                     <th><button class="sort-btn" data-sort="language" type="button">语言</button></th>
+                    <th><button class="sort-btn" data-sort="genre" type="button">风格</button></th>
                     <th><button class="sort-btn" data-sort="tags" type="button">标签</button></th>
                     <th><button class="sort-btn" data-sort="release_date" type="button">发布日期</button></th>
                     <th><button class="sort-btn" data-sort="duration_ms" type="button">时长</button></th>
@@ -110,34 +134,126 @@
 
       <!-- 艺人管理页 -->
       <section id="admin-page-people" class="admin-page hidden">
-        <div class="admin-subpage">
-          <div class="manager-toolbar">
-            <input id="peopleSearchInput" type="text" placeholder="搜索艺人" />
-            <button id="peopleNewBtn" class="btn btn-primary" type="button">新建艺人</button>
-          </div>
-          <div id="peopleManagerList" class="tag-manager-list"></div>
+        <div class="admin-table-layout">
+          <section class="panel admin-toolbar-panel">
+            <div class="admin-search-row">
+              <input id="peopleSearchInput" type="text" placeholder="搜索艺人" />
+              <div class="manager-toolbar-buttons">
+                <button id="peopleNewBtn" class="btn btn-primary" type="button">新建艺人</button>
+                <button id="peopleBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
+              </div>
+            </div>
+          </section>
+          <section class="panel admin-table-panel">
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllPeople" title="全选" /></th>
+                    <th>#</th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="name" data-label="艺人">艺人</button></th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="types" data-label="类型">类型</button></th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="created_at" data-label="创建时间">创建时间</button></th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="peopleTableBody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
       <!-- 标签管理页 -->
       <section id="admin-page-tags" class="admin-page hidden">
-        <div class="admin-subpage">
-          <div class="manager-toolbar">
-            <input id="tagSearchInput" type="text" placeholder="搜索标签" />
-            <button id="tagNewBtn" class="btn btn-primary" type="button">新建标签</button>
-          </div>
-          <div id="tagManagerList" class="tag-manager-list"></div>
+        <div class="admin-table-layout">
+          <section class="panel admin-toolbar-panel">
+            <div class="admin-search-row">
+              <input id="tagSearchInput" type="text" placeholder="搜索标签" />
+              <div class="manager-toolbar-buttons">
+                <button id="tagNewBtn" class="btn btn-primary" type="button">新建标签</button>
+                <button id="tagBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
+              </div>
+            </div>
+          </section>
+          <section class="panel admin-table-panel">
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllTags" title="全选" /></th>
+                    <th>#</th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="tag" data-sort="name" data-label="标签名称">标签名称</button></th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="tag" data-sort="created_at" data-label="创建时间">创建时间</button></th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="tagTableBody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
       <!-- 语言管理页 -->
       <section id="admin-page-language" class="admin-page hidden">
-        <div class="admin-subpage">
-          <div class="manager-toolbar">
-            <input id="languageSearchInput" type="text" placeholder="搜索语言" />
-            <button id="languageNewBtn" class="btn btn-primary" type="button">新建语言</button>
-          </div>
-          <div id="languageManagerList" class="tag-manager-list"></div>
+        <div class="admin-table-layout">
+          <section class="panel admin-toolbar-panel">
+            <div class="admin-search-row">
+              <input id="languageSearchInput" type="text" placeholder="搜索语言" />
+              <div class="manager-toolbar-buttons">
+                <button id="languageNewBtn" class="btn btn-primary" type="button">新建语言</button>
+                <button id="languageBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
+              </div>
+            </div>
+          </section>
+          <section class="panel admin-table-panel">
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllLanguages" title="全选" /></th>
+                    <th>#</th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="language" data-sort="name" data-label="语言名称">语言名称</button></th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="language" data-sort="created_at" data-label="创建时间">创建时间</button></th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="languageTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- 风格管理页 -->
+      <section id="admin-page-genre" class="admin-page hidden">
+        <div class="admin-table-layout">
+          <section class="panel admin-toolbar-panel">
+            <div class="admin-search-row">
+              <input id="genreSearchInput" type="text" placeholder="搜索风格" />
+              <div class="manager-toolbar-buttons">
+                <button id="genreNewBtn" class="btn btn-primary" type="button">新建风格</button>
+                <button id="genreBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
+              </div>
+            </div>
+          </section>
+          <section class="panel admin-table-panel">
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="selectAllGenres" title="全选" /></th>
+                    <th>#</th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="genre" data-sort="name" data-label="风格名称">风格名称</button></th>
+                    <th><button class="manager-sort-btn" type="button" data-manager="genre" data-sort="created_at" data-label="创建时间">创建时间</button></th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="genreTableBody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
     </main>
@@ -177,6 +293,7 @@
             <div class="form-field"><span>专辑</span><input id="albumInput" type="text" /></div>
             <div class="form-field"><span>时长（毫秒）</span><input id="durationInput" type="number" min="0" /></div>
             <div class="form-field"><span>语言</span><select id="languageInput"></select></div>
+            <div class="form-field"><span>风格</span><select id="genreInput"></select></div>
             <div class="form-field"><span>发布日期</span><input id="releaseDateInput" type="date" /></div>
           </div>
           <div class="tag-picker-wrap">
@@ -209,6 +326,38 @@
       </div>
     </div>
 
-    <script type="module" src="/static/admin.js?v=5"></script>
+    <!-- 编辑弹窗：标签 / 语言 / 艺人 -->
+    <div id="itemEditOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="editModalTitle">编辑</h3>
+          <button id="itemEditCloseBtn" class="btn modal-x-btn">X</button>
+        </div>
+        <form id="itemEditForm" class="create-form">
+          <div id="editFormBody"></div>
+          <div class="modal-actions">
+            <button id="itemEditCancelBtn" type="button" class="btn">取消</button>
+            <button id="itemEditSubmitBtn" type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div id="deleteOverlay" class="modal-overlay hidden">
+      <div class="modal-card modal-card-sm">
+        <div class="modal-head">
+          <h3>确认删除</h3>
+          <button id="deleteCloseBtn" class="btn modal-x-btn">X</button>
+        </div>
+        <p id="deleteMessage" class="muted"></p>
+        <div class="modal-actions">
+          <button id="deleteCancelBtn" type="button" class="btn">取消</button>
+          <button id="deleteConfirmBtn" type="button" class="btn btn-primary danger">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/static/admin.js?v=6"></script>
   </body>
 </html>

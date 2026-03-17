@@ -37,6 +37,7 @@ class Song(Base):
     chorus_artist_id: Mapped[Optional[int]] = mapped_column(ForeignKey("artists.id"), nullable=True, index=True)
     album_id: Mapped[Optional[int]] = mapped_column(ForeignKey("albums.id"), nullable=True, index=True)
     language_id: Mapped[Optional[int]] = mapped_column(ForeignKey("languages.id"), nullable=True, index=True)
+    genre_id: Mapped[Optional[int]] = mapped_column(ForeignKey("genres.id"), nullable=True, index=True)
     release_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -132,6 +133,14 @@ class SongTag(Base):
 
 class Language(Base):
     __tablename__ = "languages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Genre(Base):
+    __tablename__ = "genres"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)

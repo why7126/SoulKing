@@ -171,7 +171,7 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> bool:
     return True
 
 
-def scan_directory(db: Session, storage: S3Storage, root: Path) -> ScanJob:
+def scan_directory(db: Session, storage: S3Storage, root: Path, progress: dict = None) -> ScanJob:
     job = ScanJob(root_path=str(root), status="running")
     db.add(job)
     db.commit()
@@ -191,10 +191,17 @@ def scan_directory(db: Session, storage: S3Storage, root: Path) -> ScanJob:
             continue
 
         scanned += 1
+        if progress is not None:
+            progress["scanned_count"] = scanned
+        
         if ingest_file(db, storage, path):
             added += 1
+            if progress is not None:
+                progress["added_count"] = added
         else:
             skipped += 1
+            if progress is not None:
+                progress["skipped_count"] = skipped
 
     job.status = "finished"
     job.scanned_count = scanned

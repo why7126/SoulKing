@@ -74,34 +74,15 @@ body {
   width: min(1400px, 96vw);
 }
 
-.admin-navbar {
+/* 后台顶部栏与前台一致：使用 topbar + topbar-brand + page-actions，中间为 admin-nav */
+.admin-body .topbar .admin-nav,
+.admin-table-body .topbar .admin-nav {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.admin-navbar-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-.admin-navbar-left .eyebrow {
-  margin: 0;
-}
-.admin-navbar-left .admin-title {
-  margin: 4px 0 0;
-  font-size: clamp(18px, 2.8vw, 26px);
-}
-
-.admin-nav {
-  display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   flex: 1;
   justify-content: center;
-  max-width: 560px;
+  max-width: 520px;
 }
 
 .admin-nav-item {
@@ -148,17 +129,39 @@ body {
   box-shadow: 0 3px 12px rgba(31, 154, 194, 0.5);
 }
 
-.admin-nav-right {
-  flex-shrink: 0;
-}
-
-.admin-nav-right .nav-btn {
+.admin-body .page-actions .nav-btn,
+.admin-table-body .page-actions .nav-btn {
   min-width: 104px;
 }
 
 .admin-main {
   width: min(1400px, 96vw);
   margin: 0 auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 140px);
+}
+
+.admin-main .admin-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-top: 0;
+  height: auto;
+  overflow: visible;
+}
+
+.admin-main .admin-page.hidden {
+  display: none;
+}
+
+.admin-main .admin-table-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
 }
 
 .admin-page {
@@ -173,10 +176,76 @@ body {
   padding: 20px 0;
   max-width: min(1400px, 96vw);
   margin: 0 auto;
+  height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.manager-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tag-manager-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .admin-music-actions {
   margin-top: 12px;
+}
+
+.scan-progress-wrap {
+  margin-bottom: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(76, 201, 240, 0.08);
+  border: 1px solid rgba(76, 201, 240, 0.2);
+}
+
+.scan-progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.scan-progress-bar {
+  height: 8px;
+  background: rgba(76, 201, 240, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.scan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #2dc653);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.scan-progress-time {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .page-actions {
@@ -198,6 +267,18 @@ body {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .eyebrow {
@@ -278,30 +359,65 @@ h3 {
 }
 
 .admin-body {
-  padding-bottom: 32px;
-}
-
-.admin-table-body {
-  padding-bottom: 120px;
+  overflow: hidden;
 }
 
 .admin-table-layout {
   width: min(1400px, 96vw);
-  margin: 0 auto 24px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 16px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+  overflow: visible;
 }
 
 .admin-toolbar-panel,
 .admin-table-panel {
   padding: 16px;
+  border-right: 1px solid var(--stroke);
+}
+
+.admin-toolbar-panel {
+  flex-shrink: 0;
+  border-radius: 16px 16px 0 0;
+}
+
+.admin-table-panel {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 0 16px 16px;
+}
+
+.admin-table-panel .admin-table-wrap {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 艺人/标签/语言/风格管理：列表不显示横向滚动条 */
+#admin-page-people .admin-table-wrap,
+#admin-page-tags .admin-table-wrap,
+#admin-page-language .admin-table-wrap,
+#admin-page-genre .admin-table-wrap {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .admin-search-row {
   display: grid;
   grid-template-columns: 1fr 96px;
   gap: 10px;
+}
+
+.admin-search-row:has(.manager-toolbar-buttons) {
+  grid-template-columns: 1fr auto;
+}
+
+.manager-toolbar-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .admin-filter-grid {
@@ -337,15 +453,20 @@ h3 {
   padding: 8px 10px;
 }
 
-.admin-table-wrap {
-  overflow: auto;
-  max-height: calc(100vh - 320px);
-}
-
 .admin-table {
   width: 100%;
   border-collapse: collapse;
+}
+
+/* 仅音乐管理列表需要横向滚动，表格设最小宽度 */
+#admin-page-music .admin-table {
   min-width: 1360px;
+}
+
+/* 音乐管理列表底部留白，避免最后几行被固定播放器遮住 */
+#admin-page-music .admin-table-wrap {
+  padding-bottom: 60px;
+  box-sizing: border-box;
 }
 
 .admin-table th,
@@ -355,6 +476,20 @@ h3 {
   text-align: left;
   vertical-align: middle;
   font-size: 13px;
+}
+
+.admin-table td:has(.btn) {
+  white-space: nowrap;
+}
+
+.admin-table td .btn {
+  margin-right: 6px;
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px !important;
 }
 
 .admin-table th {
@@ -372,12 +507,18 @@ h3 {
   background: rgba(76, 201, 240, 0.08);
 }
 
-.sort-btn {
+.sort-btn,
+.manager-sort-btn {
   background: transparent;
   border: none;
   padding: 0;
   color: var(--text);
   cursor: pointer;
+  font: inherit;
+}
+
+.manager-sort-btn:hover {
+  color: var(--accent);
 }
 
 .table-action-btn {
@@ -461,8 +602,8 @@ h3 {
 }
 
 .admin-main {
-  padding: 16px;
-  overflow: auto;
+  padding: 16px 0px 0px 0px;
+  overflow: hidden;
 }
 
 .admin-section {
@@ -587,13 +728,16 @@ h3 {
 
 .tag-manager-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(154, 180, 195, 0.2);
   overflow: visible;
+  height: 48px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tag-manager-main {
@@ -721,8 +865,8 @@ h3 {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  max-height: 180px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   padding: 8px;
   border-radius: 10px;
   background: rgba(11, 26, 40, 0.98);
@@ -1257,8 +1401,23 @@ button:focus {
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
-  max-height: min(80vh, 760px);
+  max-height: min(90vh, 700px);
   overflow: auto;
+}
+
+/* 新建/编辑艺人弹窗加高（约 1.5 倍），便于类型下拉框完整展示 */
+.modal-card.modal-card-tall {
+  max-height: min(92vh, 820px);
+}
+
+.modal-card-sm {
+  width: min(400px, 90vw);
+  max-height: none;
+}
+
+.btn-primary.danger {
+  background: linear-gradient(130deg, #dc2626, #ef4444);
+  color: white;
 }
 
 .modal-x-btn {

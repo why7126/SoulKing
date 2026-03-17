@@ -168,7 +168,7 @@ async function loadPlaylists() {
 function playlistCard(playlist, isActive) {
   return `
     <div class="playlist-item-inner ${isActive ? "active" : ""}">
-      ${playlist.isAll ? "" : '<span class="drag-handle" title="拖拽排序">⋮⋮</span>'}
+      ${playlist.isAll ? "" : '<span class="drag-handle" title="拖拽排序">⋮</span>'}
       <div class="playlist-meta">
         <strong>${playlist.name}</strong>
         <p class="song-meta">${playlist.song_count || 0} 首歌曲</p>

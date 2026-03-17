@@ -13,10 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import Album, Artist, Language, Playlist, PlaylistItem, Song, SongChorusArtist, SongComposerArtist, SongFile, SongLeadArtist, SongLyricistArtist, SongTag, Tag
+from app.models import Album, Artist, Genre, Language, Playlist, PlaylistItem, Song, SongChorusArtist, SongComposerArtist, SongFile, SongLeadArtist, SongLyricistArtist, SongTag, Tag
 from app.schemas import (
     BulkSongMetadataUpdate,
     FilterOptionsOut,
+    GenreCreate,
+    GenreOut,
+    GenreUpdate,
     PersonCreate,
     PersonOut,
     PersonUpdate,
@@ -29,6 +32,7 @@ from app.schemas import (
     PlaylistUpdate,
     ScanRequest,
     ScanResult,
+    ScanProgress,
     SongDetailOut,
     SongFileOut,
     SongMetadataUpdate,
@@ -49,6 +53,15 @@ app = FastAPI(title=settings.app_name)
 storage = S3Storage()
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+scan_progress = {
+    "is_scanning": False,
+    "total_count": 0,
+    "scanned_count": 0,
+    "added_count": 0,
+    "skipped_count": 0,
+    "start_time": None,
+}
 
 
 def get_song_tag_names(db: Session, song_id: int) -> list[str]:
@@ -77,6 +90,12 @@ def get_song_language_name(db: Session, song: Song) -> Optional[str]:
     if not song.language_id:
         return None
     return db.scalar(select(Language.name).where(Language.id == song.language_id))
+
+
+def get_song_genre_name(db: Session, song: Song) -> Optional[str]:
+    if not song.genre_id:
+        return None
+    return db.scalar(select(Genre.name).where(Genre.id == song.genre_id))
 
 
 def get_song_lead_artist_names(db: Session, song: Song) -> list[str]:
@@ -191,6 +210,7 @@ def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_na
         sample_rate=best_file.sample_rate if best_file else None,
         created_at=best_file.created_at if best_file else song.created_at,
         language=get_song_language_name(db, song),
+                genre=get_song_genre_name(db, song),
         release_date=song.release_date,
     )
 
@@ -200,6 +220,8 @@ def ensure_schema() -> None:
     with engine.begin() as connection:
         if "languages" not in inspector.get_table_names():
             Language.__table__.create(bind=connection, checkfirst=True)
+        if "genres" not in inspector.get_table_names():
+            Genre.__table__.create(bind=connection, checkfirst=True)
         if "song_lead_artists" not in inspector.get_table_names():
             SongLeadArtist.__table__.create(bind=connection, checkfirst=True)
         if "song_chorus_artists" not in inspector.get_table_names():
@@ -215,6 +237,8 @@ def ensure_schema() -> None:
             connection.execute(text("ALTER TABLE songs ADD COLUMN chorus_artist_id INTEGER"))
         if "release_date" not in song_columns:
             connection.execute(text("ALTER TABLE songs ADD COLUMN release_date TEXT"))
+        if "genre_id" not in song_columns:
+            connection.execute(text("ALTER TABLE songs ADD COLUMN genre_id INTEGER"))
         artist_columns = {col["name"] for col in inspect(engine).get_columns("artists")}
         if "types" not in artist_columns:
             connection.execute(text("ALTER TABLE artists ADD COLUMN types TEXT"))
@@ -271,31 +295,91 @@ def admin_page():
     return FileResponse(static_dir / "admin.html")
 
 
+@app.get("/admin/scan-progress", response_model=ScanProgress)
+def get_scan_progress():
+    return ScanProgress(**scan_progress)
+
+
+@app.post("/admin/scan-progress/reset")
+def reset_scan_progress():
+    global scan_progress
+    scan_progress = {
+        "is_scanning": False,
+        "total_count": 0,
+        "scanned_count": 0,
+        "added_count": 0,
+        "skipped_count": 0,
+        "start_time": None,
+    }
+    return {"status": "reset"}
+
+
 @app.post("/libraries/scan", response_model=ScanResult)
 def trigger_scan(payload: ScanRequest, db: Session = Depends(get_db)):
+    global scan_progress
     target = Path(payload.directory or settings.import_root)
-    job = scan_directory(db=db, storage=storage, root=target)
+    
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid directory")
+    
+    files = [p for p in target.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS]
+    scan_progress = {
+        "is_scanning": True,
+        "total_count": len(files),
+        "scanned_count": 0,
+        "added_count": 0,
+        "skipped_count": 0,
+        "start_time": __import__("time").time(),
+    }
+    
+    job = scan_directory(db=db, storage=storage, root=target, progress=scan_progress)
+    
+    scan_progress["is_scanning"] = False
+    scan_progress["scanned_count"] = job.scanned_count
+    scan_progress["added_count"] = job.added_count
+    scan_progress["skipped_count"] = job.skipped_count
+    
     return ScanResult(
         scan_job_id=job.id,
         status=job.status,
         scanned_count=job.scanned_count,
         added_count=job.added_count,
         skipped_count=job.skipped_count,
+        total_count=len(files),
+        start_time=scan_progress["start_time"],
     )
 
 
 @app.post("/admin/import-directory", response_model=ScanResult)
 async def import_directory(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    global scan_progress
+    
+    supported_files = []
+    for f in files:
+        if Path(f.filename or "").suffix.lower() in SUPPORTED_EXTENSIONS:
+            supported_files.append(f)
+    
+    scan_progress = {
+        "is_scanning": True,
+        "total_count": len(supported_files),
+        "scanned_count": 0,
+        "added_count": 0,
+        "skipped_count": 0,
+        "start_time": __import__("time").time(),
+    }
+    
     scanned_count = 0
     added_count = 0
     skipped_count = 0
 
-    for upload in files:
+    for upload in supported_files:
         suffix = Path(upload.filename or "").suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
             continue
 
         scanned_count += 1
+        scan_progress["scanned_count"] = scanned_count
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await upload.read()
             tmp.write(content)
@@ -304,17 +388,25 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
         try:
             if ingest_file(db, storage, tmp_path):
                 added_count += 1
+                scan_progress["added_count"] = added_count
             else:
                 skipped_count += 1
+                scan_progress["skipped_count"] = skipped_count
         finally:
             tmp_path.unlink(missing_ok=True)
-
+        
+        await __import__("asyncio").sleep(0.01)
+    
+    scan_progress["is_scanning"] = False
+    
     return ScanResult(
         scan_job_id=0,
         status="finished",
         scanned_count=scanned_count,
         added_count=added_count,
         skipped_count=skipped_count,
+        total_count=len(supported_files),
+        start_time=scan_progress["start_time"],
     )
 
 
@@ -325,6 +417,7 @@ def list_songs(
     artists: list[str] = Query(default=[]),
     albums: list[str] = Query(default=[]),
     languages: list[str] = Query(default=[]),
+    genre_ids: list[int] = Query(default=[]),
     lead_artists: list[str] = Query(default=[]),
     chorus_artists: list[str] = Query(default=[]),
     lyricists: list[str] = Query(default=[]),
@@ -351,6 +444,8 @@ def list_songs(
             query = query.where(Song.language_id.in_(language_ids))
         else:
             return []
+    if genre_ids:
+        query = query.where(Song.genre_id.in_(genre_ids))
 
     rows = db.execute(query).all()
     result: list[SongOut] = []
@@ -415,6 +510,8 @@ def list_songs(
                 sample_rate=best_file.sample_rate,
                 created_at=best_file.created_at,
                 language=get_song_language_name(db, song),
+                genre=get_song_genre_name(db, song),
+                release_date=song.release_date or "",
             )
         )
 
@@ -467,6 +564,7 @@ def admin_filter_options(db: Session = Depends(get_db)):
     sample_rates = sorted({int(sf.sample_rate) for sf in db.scalars(select(SongFile)).all() if sf.sample_rate is not None})
     tags = [TagOut(id=tag.id, name=tag.name) for tag in db.scalars(select(Tag).order_by(Tag.name.asc())).all()]
     languages = [LanguageOut(id=language.id, name=language.name) for language in db.scalars(select(Language).order_by(Language.name.asc())).all()]
+    genres = [GenreOut(id=genre.id, name=genre.name) for genre in db.scalars(select(Genre).order_by(Genre.name.asc())).all()]
     lead_artist_names = sorted({name for song in db.scalars(select(Song)).all() for name in get_song_lead_artist_names(db, song)})
     chorus_artist_names = sorted({name for song in db.scalars(select(Song)).all() for name in get_song_chorus_artist_names(db, song)})
     lyricist_names = sorted({name for song in db.scalars(select(Song)).all() for name in get_song_role_artist_names(db, song, SongLyricistArtist)})
@@ -483,6 +581,7 @@ def admin_filter_options(db: Session = Depends(get_db)):
         sample_rates=sample_rates,
         tags=tags,
         languages=languages,
+        genres=genres,
     )
 
 
@@ -634,6 +733,7 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         files=[SongFileOut.model_validate(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
+                genre=get_song_genre_name(db, song),
         lead_artist_ids=get_song_lead_artist_ids(db, song),
         chorus_artist_ids=get_song_chorus_artist_ids(db, song),
         lyricist_ids=get_song_role_artist_ids(db, song, SongLyricistArtist),
@@ -697,6 +797,15 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
             raise HTTPException(status_code=404, detail="Language not found")
         song.language_id = language.id
 
+    if payload.genre_id is not None:
+        if payload.genre_id == 0:
+            song.genre_id = None
+        else:
+            genre = db.scalar(select(Genre).where(Genre.id == payload.genre_id))
+            if not genre:
+                raise HTTPException(status_code=404, detail="Genre not found")
+            song.genre_id = genre.id
+
     if payload.release_date is not None:
         song.release_date = payload.release_date.strip() or None
 
@@ -721,6 +830,7 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         files=[SongFileOut.model_validate(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
+                genre=get_song_genre_name(db, song),
         lead_artist_ids=get_song_lead_artist_ids(db, song),
         chorus_artist_ids=get_song_chorus_artist_ids(db, song),
         lyricist_ids=get_song_role_artist_ids(db, song, SongLyricistArtist),
@@ -785,13 +895,23 @@ def bulk_update_songs(payload: BulkSongMetadataUpdate, db: Session = Depends(get
 @app.get("/tags", response_model=list[TagOut])
 def list_tags(db: Session = Depends(get_db)):
     tags = db.scalars(select(Tag).order_by(Tag.name.asc())).all()
-    return [TagOut(id=tag.id, name=tag.name) for tag in tags]
+    return [TagOut(
+        id=tag.id,
+        name=tag.name,
+        created_at=tag.created_at.strftime("%Y-%m-%d %H:%M") if tag.created_at else None
+    ) for tag in tags]
 
 
 @app.get("/people", response_model=list[PersonOut])
 def list_people(db: Session = Depends(get_db)):
     people = db.scalars(select(Artist).order_by(Artist.name.asc())).all()
-    return [PersonOut(id=person.id, name=person.name, types=parse_artist_types(person.types)) for person in people]
+    return [PersonOut(
+        id=person.id,
+        name=person.name,
+        types=parse_artist_types(person.types),
+        created_at=person.created_at.strftime("%Y-%m-%d %H:%M") if person.created_at else None,
+        updated_at=None
+    ) for person in people]
 
 
 @app.post("/people", response_model=PersonOut)
@@ -842,7 +962,11 @@ def delete_person(person_id: int, db: Session = Depends(get_db)):
 @app.get("/languages", response_model=list[LanguageOut])
 def list_languages(db: Session = Depends(get_db)):
     languages = db.scalars(select(Language).order_by(Language.name.asc())).all()
-    return [LanguageOut(id=language.id, name=language.name) for language in languages]
+    return [LanguageOut(
+        id=language.id,
+        name=language.name,
+        created_at=language.created_at.strftime("%Y-%m-%d %H:%M") if language.created_at else None
+    ) for language in languages]
 
 
 @app.post("/languages", response_model=LanguageOut)
@@ -891,6 +1015,59 @@ def delete_language(language_id: int, db: Session = Depends(get_db)):
         replacement_id = replacement.id
     db.execute(text("UPDATE songs SET language_id = :replacement_id WHERE language_id = :language_id"), {"replacement_id": replacement_id, "language_id": language_id})
     db.delete(language)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/genres", response_model=list[GenreOut])
+def list_genres(db: Session = Depends(get_db)):
+    genres = db.scalars(select(Genre).order_by(Genre.name.asc())).all()
+    return [GenreOut(
+        id=genre.id,
+        name=genre.name,
+        created_at=genre.created_at.strftime("%Y-%m-%d %H:%M") if genre.created_at else None
+    ) for genre in genres]
+
+
+@app.post("/genres", response_model=GenreOut)
+def create_genre(payload: GenreCreate, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Genre name cannot be empty")
+    exists = db.scalar(select(Genre).where(func.lower(Genre.name) == name.lower()))
+    if exists:
+        raise HTTPException(status_code=400, detail="Genre already exists")
+    genre = Genre(name=name)
+    db.add(genre)
+    db.commit()
+    db.refresh(genre)
+    return GenreOut(id=genre.id, name=genre.name)
+
+
+@app.put("/genres/{genre_id}", response_model=GenreOut)
+def update_genre(genre_id: int, payload: GenreUpdate, db: Session = Depends(get_db)):
+    genre = db.scalar(select(Genre).where(Genre.id == genre_id))
+    if not genre:
+        raise HTTPException(status_code=404, detail="Genre not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Genre name cannot be empty")
+    exists = db.scalar(select(Genre).where(func.lower(Genre.name) == name.lower(), Genre.id != genre_id))
+    if exists:
+        raise HTTPException(status_code=400, detail="Genre already exists")
+    genre.name = name
+    db.commit()
+    db.refresh(genre)
+    return GenreOut(id=genre.id, name=genre.name)
+
+
+@app.delete("/genres/{genre_id}")
+def delete_genre(genre_id: int, db: Session = Depends(get_db)):
+    genre = db.scalar(select(Genre).where(Genre.id == genre_id))
+    if not genre:
+        raise HTTPException(status_code=404, detail="Genre not found")
+    db.execute(text("UPDATE songs SET genre_id = NULL WHERE genre_id = :genre_id"), {"genre_id": genre_id})
+    db.delete(genre)
     db.commit()
     return {"success": True}
 
@@ -1007,3 +1184,36 @@ def download_song_file(song_file_id: int, db: Session = Depends(get_db)):
         "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
     }
     return StreamingResponse(s3_object["Body"].iter_chunks(), media_type=song_file.mime_type, headers=headers)
+
+
+@app.get("/admin/songs/batch-download")
+def batch_download_songs(song_ids: str = Query(...), db: Session = Depends(get_db)):
+    import io
+    import zipfile
+    
+    ids = [int(x.strip()) for x in song_ids.split(",") if x.strip().isdigit()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No valid song IDs provided")
+    
+    song_files = db.scalars(select(SongFile).where(SongFile.song_id.in_(ids))).all()
+    if not song_files:
+        raise HTTPException(status_code=404, detail="No song files found")
+    
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        for sf in song_files:
+            try:
+                s3_object = storage.get_object(sf.object_key)
+                content = b"".join(list(s3_object["Body"].iter_chunks()))
+                safe_name = sf.original_filename or f"song_{sf.id}.{sf.format}"
+                zf.writestr(safe_name, content)
+            except Exception as e:
+                print(f"Error adding file {sf.id} to zip: {e}")
+                continue
+    
+    memory_file.seek(0)
+    headers = {
+        "Content-Type": "application/zip",
+        "Content-Disposition": f"attachment; filename*=UTF-8''music_batch_{len(ids)}.zip",
+    }
+    return StreamingResponse(memory_file, media_type="application/zip", headers=headers)

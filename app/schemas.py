@@ -44,6 +44,7 @@ class SongOut(BaseModel):
     sample_rate: Optional[int] = None
     created_at: Optional[datetime] = None
     language: Optional[str] = None
+    genre: Optional[str] = None
     release_date: Optional[str] = None
 
 
@@ -62,10 +63,12 @@ class SongDetailOut(BaseModel):
     files: list[SongFileOut]
     tags: list[str] = []
     language: Optional[str] = None
+    genre: Optional[str] = None
     lead_artist_ids: list[int] = []
     chorus_artist_ids: list[int] = []
     lyricist_ids: list[int] = []
     composer_ids: list[int] = []
+    genre_id: Optional[int] = None
     release_date: Optional[str] = None
 
 
@@ -75,6 +78,7 @@ class SongMetadataUpdate(BaseModel):
     duration_ms: Optional[int] = None
     tag_ids: Optional[list[int]] = None
     language_id: Optional[int] = None
+    genre_id: Optional[int] = None
     lead_artist_ids: Optional[list[int]] = None
     chorus_artist_ids: Optional[list[int]] = None
     lyricist_ids: Optional[list[int]] = None
@@ -100,6 +104,7 @@ class TagUpdate(BaseModel):
 class TagOut(BaseModel):
     id: int
     name: str
+    created_at: Optional[str] = None
 
 
 class LanguageCreate(BaseModel):
@@ -113,6 +118,21 @@ class LanguageUpdate(BaseModel):
 class LanguageOut(BaseModel):
     id: int
     name: str
+    created_at: Optional[str] = None
+
+
+class GenreCreate(BaseModel):
+    name: str
+
+
+class GenreUpdate(BaseModel):
+    name: str
+
+
+class GenreOut(BaseModel):
+    id: int
+    name: str
+    created_at: Optional[str] = None
 
 
 class PersonCreate(BaseModel):
@@ -129,6 +149,8 @@ class PersonOut(BaseModel):
     id: int
     name: str
     types: list[str] = []
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class FilterOptionsOut(BaseModel):
@@ -143,6 +165,7 @@ class FilterOptionsOut(BaseModel):
     sample_rates: list[int]
     tags: list[TagOut]
     languages: list[LanguageOut]
+    genres: list[GenreOut] = []
 
 
 class ScanResult(BaseModel):
@@ -151,6 +174,17 @@ class ScanResult(BaseModel):
     scanned_count: int
     added_count: int
     skipped_count: int
+    total_count: int = 0
+    start_time: Optional[float] = None
+
+
+class ScanProgress(BaseModel):
+    is_scanning: bool = False
+    total_count: int = 0
+    scanned_count: int = 0
+    added_count: int = 0
+    skipped_count: int = 0
+    start_time: Optional[float] = None
 
 
 class PlayResponse(BaseModel):
