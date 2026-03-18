@@ -733,11 +733,12 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         files=[SongFileOut.model_validate(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
-                genre=get_song_genre_name(db, song),
+        genre=get_song_genre_name(db, song),
         lead_artist_ids=get_song_lead_artist_ids(db, song),
         chorus_artist_ids=get_song_chorus_artist_ids(db, song),
         lyricist_ids=get_song_role_artist_ids(db, song, SongLyricistArtist),
         composer_ids=get_song_role_artist_ids(db, song, SongComposerArtist),
+        genre_id=song.genre_id,
         release_date=song.release_date,
     )
 

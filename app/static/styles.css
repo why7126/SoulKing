@@ -475,6 +475,7 @@ h3 {
   border-bottom: 1px solid rgba(154, 180, 195, 0.14);
   text-align: left;
   vertical-align: middle;
+  white-space: nowrap;
   font-size: 13px;
 }
 
@@ -497,6 +498,18 @@ h3 {
   top: 0;
   background: rgba(11, 26, 40, 0.96);
   z-index: 1;
+}
+
+.admin-table th:last-child,
+.admin-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+
+.admin-table tbody tr:hover td:last-child {
+  background: rgba(76, 201, 240, 0.08);
 }
 
 .admin-table tbody tr {
@@ -567,7 +580,13 @@ h3 {
   background: rgba(11, 26, 40, 0.96);
   border: 1px solid var(--stroke);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
-  z-index: 10;
+  z-index: 100;
+}
+
+/* 音乐管理操作列下拉：挂到 body 并固定定位，置于最顶层，紧贴按钮 */
+.table-more-menu.table-more-menu-fixed {
+  position: fixed;
+  z-index: 99999;
 }
 
 .empty-cell {
@@ -578,6 +597,8 @@ h3 {
 
 .edit-modal-card {
   width: min(860px, 96vw);
+  max-height: min(90vh, 800px);
+  overflow-y: auto;
 }
 
 .admin-layout {
@@ -799,6 +820,27 @@ h3 {
   color: var(--muted);
 }
 
+.form-field-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkbox-inline input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 .inline-select-row {
   display: grid;
   grid-template-columns: 1fr 88px;
@@ -875,6 +917,11 @@ h3 {
   z-index: 50;
 }
 
+.form-grid .multi-select-menu {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .form-grid > .form-field .artist-option {
   display: inline-flex !important;
   align-items: center;
@@ -917,6 +964,23 @@ h3 {
 
 .multi-select-options {
   margin-bottom: 8px;
+}
+
+.multi-select-search {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(76, 201, 240, 0.38);
+  border-radius: 6px;
+  background: rgba(11, 26, 40, 0.96);
+  color: var(--text);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.multi-select-search:focus {
+  outline: none;
+  border-color: var(--primary);
 }
 
 .multi-select-menu-actions {
@@ -1204,7 +1268,7 @@ button:focus {
 
 .front-song-item {
   max-height: none;
-  min-height: 88px;
+  min-height: 110px;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;

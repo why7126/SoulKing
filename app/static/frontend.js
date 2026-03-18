@@ -334,6 +334,7 @@ function songActionsMarkup(song) {
   const infoTags = [
     ...((song.formats || []).map((fmt) => ({ label: fmt.toUpperCase(), kind: "format" }))),
     ...(song.language ? [{ label: song.language, kind: "language" }] : []),
+    ...(song.genre ? [{ label: song.genre, kind: "genre" }] : []),
     ...((song.tags || []).map((tag) => ({ label: tag, kind: "tag" }))),
   ];
   return `
@@ -344,8 +345,9 @@ function songActionsMarkup(song) {
         ${infoTags.map((item) => `<span class="tag tag-${item.kind}">${item.label}</span>`).join("") || '<span class="tag">未分类</span>'}
         </div>
       </div>
-      <p class="song-meta">主唱：${song.lead_artist || "无"} · 合唱：${song.chorus_artist || "无"}</p>
-      <p class="song-meta">${song.album || "Unknown Album"} · ${fmtDuration(song.duration_ms)}${song.release_date ? ` · ${song.release_date}` : ""}</p>
+      <p class="song-meta">原唱：${song.lead_artist || "无"}</p>
+      <p class="song-meta">作词：${(song.lyricists || []).join(" / ") || "无"} · 作曲：${(song.composers || []).join(" / ") || "无"}</p>
+      <p class="song-meta"><span title="专辑">${song.album || "Unknown Album"}</span> · <span title="时长">${fmtDuration(song.duration_ms)}</span>${song.release_date ? ` · <span title="发行日期">${song.release_date}</span>` : ""}</p>
     </div>
     <div class="song-row-actions">
       <button class="btn btn-mini icon-btn" data-role="play" title="试听" aria-label="试听">▶</button>

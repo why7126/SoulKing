@@ -47,16 +47,15 @@
             </div>
             <div id="filterSection" class="admin-filter-section hidden">
               <div class="admin-filter-grid admin-filter-grid-four">
-                <label><span>主唱</span><select id="leadArtistFilter"></select></label>
-                <label><span>合唱</span><select id="chorusArtistFilter"></select></label>
+                <label><span>原唱</span><select id="leadArtistFilter"></select></label>
                 <label><span>作词</span><select id="lyricistFilter"></select></label>
                 <label><span>作曲</span><select id="composerFilter"></select></label>
+                <label><span>文件格式</span><select id="formatFilter"></select></label>
               </div>
               <div class="admin-filter-grid admin-filter-grid-four">
-                <label><span>文件格式</span><select id="formatFilter"></select></label>
-                <label><span>标签</span><select id="tagFilter"></select></label>
                 <label><span>语言</span><select id="languageFilter"></select></label>
                 <label><span>风格</span><select id="genreFilter"></select></label>
+                <label><span>标签</span><select id="tagFilter"></select></label>
               </div>
             </div>
             <div id="scanProgressWrap" class="scan-progress-wrap hidden">
@@ -88,8 +87,7 @@
                     <th><input type="checkbox" id="selectAllSongs" /></th>
                     <th>#</th>
                     <th><button class="sort-btn" data-sort="title" type="button">歌曲名</button></th>
-                    <th><button class="sort-btn" data-sort="lead_artist" type="button">主唱</button></th>
-                    <th><button class="sort-btn" data-sort="chorus_artist" type="button">合唱</button></th>
+                    <th><button class="sort-btn" data-sort="lead_artist" type="button">原唱</button></th>
                     <th><button class="sort-btn" data-sort="lyricists" type="button">作词</button></th>
                     <th><button class="sort-btn" data-sort="composers" type="button">作曲</button></th>
                     <th><button class="sort-btn" data-sort="album" type="button">专辑</button></th>
@@ -286,13 +284,12 @@
         <form id="metadataForm" class="metadata-form">
           <div class="form-grid">
             <div class="form-field"><span>歌曲名</span><input id="titleInput" type="text" /></div>
-            <div class="form-field"><span>主唱</span><div class="inline-artist-field"><div id="leadArtistInput" class="multi-select"></div></div></div>
-            <div class="form-field"><span>合唱</span><div class="inline-artist-field"><div id="chorusArtistInput" class="multi-select"></div></div></div>
+            <div class="form-field"><span>原唱</span><div class="inline-artist-field"><div id="leadArtistInput" class="multi-select"></div></div></div>
             <div class="form-field"><span>作词</span><div class="inline-artist-field"><div id="lyricistInput" class="multi-select"></div></div></div>
             <div class="form-field"><span>作曲</span><div class="inline-artist-field"><div id="composerInput" class="multi-select"></div></div></div>
             <div class="form-field"><span>专辑</span><input id="albumInput" type="text" /></div>
             <div class="form-field"><span>时长（毫秒）</span><input id="durationInput" type="number" min="0" /></div>
-            <div class="form-field"><span>语言</span><select id="languageInput"></select></div>
+            <div class="form-field"><span>语言</span><div class="inline-artist-field"><div id="languageInput" class="multi-select"></div></div></div>
             <div class="form-field"><span>风格</span><select id="genreInput"></select></div>
             <div class="form-field"><span>发布日期</span><input id="releaseDateInput" type="date" /></div>
           </div>

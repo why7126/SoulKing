@@ -62,7 +62,6 @@ const els = {
   filterSection: document.querySelector("#filterSection"),
   formatFilter: document.querySelector("#formatFilter"),
   leadArtistFilter: document.querySelector("#leadArtistFilter"),
-  chorusArtistFilter: document.querySelector("#chorusArtistFilter"),
   tagFilter: document.querySelector("#tagFilter"),
   languageFilter: document.querySelector("#languageFilter"),
   genreFilter: document.querySelector("#genreFilter"),
@@ -88,7 +87,6 @@ const els = {
   metadataForm: document.querySelector("#metadataForm"),
   titleInput: document.querySelector("#titleInput"),
   leadArtistInput: document.querySelector("#leadArtistInput"),
-  chorusArtistInput: document.querySelector("#chorusArtistInput"),
   lyricistInput: document.querySelector("#lyricistInput"),
   composerInput: document.querySelector("#composerInput"),
   albumInput: document.querySelector("#albumInput"),
@@ -236,16 +234,20 @@ function openCreateModal(type, editData = null) {
     bodyEl.innerHTML = `<label class="form-field"><span>风格名称</span><input type="text" name="name" placeholder="输入新风格名称" value="${editData?.name || ''}" /></label>`;
   } else if (type === "person") {
     titleEl.textContent = isEdit ? "编辑艺人" : "新建艺人";
+    const selectedTypes = editData?.types || ["歌手"];
     bodyEl.innerHTML = `
       <label class="form-field"><span>艺人名称</span><input type="text" name="name" placeholder="输入艺人名称" value="${editData?.name || ''}" /></label>
-      <div class="form-field"><span>类型</span><div id="createPersonTypes" class="multi-select compact-multi-select"></div></div>
+      <div class="form-field form-field-inline"><span>类型</span>
+        <label class="checkbox-inline"><input type="checkbox" name="personType" value="歌手" ${selectedTypes.includes("歌手") ? "checked" : ""} />歌手</label>
+        <label class="checkbox-inline"><input type="checkbox" name="personType" value="作词" ${selectedTypes.includes("作词") ? "checked" : ""} />作词</label>
+        <label class="checkbox-inline"><input type="checkbox" name="personType" value="作曲" ${selectedTypes.includes("作曲") ? "checked" : ""} />作曲</label>
+      </div>
     `;
-    const typesContainer = document.getElementById("createPersonTypes");
-    if (typesContainer) renderTypeMultiSelect(typesContainer, editData?.types || ["歌手"]);
   }
   const createCard = els.createOverlay?.querySelector(".modal-card");
   if (createCard) createCard.classList.toggle("modal-card-tall", type === "person");
   els.createOverlay.classList.remove("hidden");
+  setTimeout(() => bodyEl?.querySelector('input[name="name"]')?.focus(), 0);
 }
 
 function closeCreateModal() {
@@ -298,8 +300,8 @@ async function submitCreateForm(e) {
         showToast("风格已创建", "success");
       }
     } else if (type === "person") {
-      const typesContainer = document.getElementById("createPersonTypes");
-      const types = typesContainer ? (getSelectedTypes(typesContainer).length ? getSelectedTypes(typesContainer) : ["歌手"]) : ["歌手"];
+      const typeCheckboxes = bodyEl?.querySelectorAll('input[name="personType"]:checked');
+      const types = typeCheckboxes && typeCheckboxes.length ? Array.from(typeCheckboxes).map(cb => cb.value) : ["歌手"];
       if (isEdit) {
         await request(`/people/${editData.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, types }) });
         await Promise.all([loadPeople(), loadSongs()]);
@@ -377,11 +379,15 @@ function renderArtistMultiSelect(container, selectedIds = [], type = "歌手") {
   container.innerHTML = `
     <div class="multi-select-trigger" role="button" tabindex="0">${selectedNames.length ? `<span class="tag-list">${selectedNames.map((name) => `<span class="tag">${name}</span>`).join("")}</span>` : "请选择"}</div>
     <div class="multi-select-menu hidden">
-      ${sourcePeople.map((person) => `<div class="artist-option"><input type="checkbox" value="${person.id}" ${validSelectedIds.includes(person.id) ? "checked" : ""} /><span>${person.name}</span></div>`).join("")}
+      <input type="text" class="multi-select-search" placeholder="搜索..." />
+      <div class="multi-select-options">
+        ${sourcePeople.map((person) => `<div class="artist-option"><input type="checkbox" value="${person.id}" ${validSelectedIds.includes(person.id) ? "checked" : ""} /><span>${person.name}</span></div>`).join("")}
+      </div>
     </div>
   `;
   const trigger = container.querySelector('.multi-select-trigger');
   const menu = container.querySelector('.multi-select-menu');
+  const searchInput = menu.querySelector('.multi-select-search');
   trigger.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -391,9 +397,18 @@ function renderArtistMultiSelect(container, selectedIds = [], type = "歌手") {
     const willOpen = menu.classList.contains('hidden');
     menu.classList.toggle('hidden', !willOpen);
     activeMultiSelect = willOpen ? menu : null;
+    if (willOpen) setTimeout(() => searchInput?.focus(), 0);
   });
   menu.addEventListener('click', (event) => {
     event.stopPropagation();
+  });
+  searchInput?.addEventListener('input', (event) => {
+    const keyword = event.target.value.toLowerCase();
+    const options = menu.querySelectorAll('.artist-option');
+    options.forEach((option) => {
+      const text = option.querySelector('span').textContent.toLowerCase();
+      option.style.display = keyword && !text.includes(keyword) ? 'none' : '';
+    });
   });
   menu.addEventListener('change', (event) => {
     if (event.target.type === 'checkbox') {
@@ -496,7 +511,7 @@ function renderSongs() {
   els.songTableBody.innerHTML = "";
   const songs = state.songs || [];
   if (!songs.length) {
-    els.songTableBody.innerHTML = '<tr><td colspan="16" class="empty-cell">暂无歌曲</td></tr>';
+    els.songTableBody.innerHTML = '<tr><td colspan="15" class="empty-cell">暂无歌曲</td></tr>';
     renderSortIndicators();
     return;
   }
@@ -512,7 +527,6 @@ function renderSongs() {
       <td>${index + 1}</td>
       <td><button class="song-link-btn" data-role="title" type="button">${song.title || "-"}</button></td>
       <td>${song.lead_artist || "-"}</td>
-      <td>${song.chorus_artist || "-"}</td>
       <td>${(song.lyricists || []).join(" / ") || "-"}</td>
       <td>${(song.composers || []).join(" / ") || "-"}</td>
       <td>${song.album || "-"}</td>
@@ -549,19 +563,53 @@ function renderSongs() {
     tr.querySelector('[data-role="title"]').addEventListener("click", () => openEditModal(song.id));
     const moreBtn = tr.querySelector('[data-role="more"]');
     const menu = tr.querySelector('[data-role="menu"]');
+    const tableMore = moreBtn.closest(".table-more");
     moreBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       document.querySelectorAll('.table-more-menu').forEach((node) => {
-        if (node !== menu) node.classList.add("hidden");
+        if (node !== menu) {
+          node.classList.add("hidden");
+          node.classList.remove("table-more-menu-fixed");
+          node.style.top = "";
+          node.style.left = "";
+          node.style.right = "";
+          const home = node._tableMoreHome;
+          if (home && node.parentNode === document.body) home.appendChild(node);
+        }
       });
+      const wasHidden = menu.classList.contains("hidden");
       menu.classList.toggle("hidden");
+      if (wasHidden) {
+        menu._tableMoreHome = tableMore;
+        document.body.appendChild(menu);
+        menu.classList.add("table-more-menu-fixed");
+        const rect = moreBtn.getBoundingClientRect();
+        const gap = 2;
+        menu.style.top = `${rect.bottom + gap}px`;
+        menu.style.left = `${rect.right - 110}px`;
+        menu.style.right = "auto";
+      } else {
+        menu.classList.remove("table-more-menu-fixed");
+        menu.style.top = "";
+        menu.style.left = "";
+        menu.style.right = "";
+        if (tableMore) tableMore.appendChild(menu);
+      }
     });
-    tr.querySelector('[data-role="preview"]')?.addEventListener("click", () => {
+    function closeMenuAndReturnHome() {
       menu.classList.add("hidden");
+      menu.classList.remove("table-more-menu-fixed");
+      menu.style.top = "";
+      menu.style.left = "";
+      menu.style.right = "";
+      if (tableMore) tableMore.appendChild(menu);
+    }
+    tr.querySelector('[data-role="preview"]')?.addEventListener("click", () => {
+      closeMenuAndReturnHome();
       playSongInAdmin(song.id).catch((err) => showToast(`试听失败: ${err.message || err}`, "error"));
     });
     tr.querySelector('[data-role="download"]')?.addEventListener("click", async () => {
-      menu.classList.add("hidden");
+      closeMenuAndReturnHome();
       try {
         const playInfo = await request(`/songs/${song.id}/play`);
         const link = document.createElement("a");
@@ -574,9 +622,12 @@ function renderSongs() {
         showToast(`下载失败: ${err.message || err}`, "error");
       }
     });
-    tr.querySelector('[data-role="edit"]').addEventListener("click", () => openEditModal(song.id));
+    tr.querySelector('[data-role="edit"]').addEventListener("click", () => {
+      closeMenuAndReturnHome();
+      openEditModal(song.id);
+    });
     tr.querySelector('[data-role="delete"]').addEventListener("click", async () => {
-      menu.classList.add("hidden");
+      closeMenuAndReturnHome();
       const ok = await openModal({ title: "删除歌曲", message: `确认删除歌曲「${song.title}」吗？`, confirmText: "删除", withInput: false });
       if (!ok) return;
       await request(`/songs/${song.id}`, { method: "DELETE" });
@@ -980,13 +1031,12 @@ async function loadFilterOptions() {
   try {
     state.filters = await request("/admin/filter-options");
   } catch (err) {
-    state.filters = { formats: [], lead_artists: [], chorus_artists: [], tags: [], languages: [], lyricists: [], composers: [], genres: [] };
+    state.filters = { formats: [], lead_artists: [], tags: [], languages: [], lyricists: [], composers: [], genres: [] };
     showToast("加载筛选选项失败: " + (err && err.message ? err.message : String(err)), "error");
   }
   const f = state.filters || {};
   if (els.formatFilter) renderSelectOptions(els.formatFilter, f.formats || [], (v) => v.toUpperCase());
   if (els.leadArtistFilter) renderSelectOptions(els.leadArtistFilter, f.lead_artists || []);
-  if (els.chorusArtistFilter) renderSelectOptions(els.chorusArtistFilter, f.chorus_artists || []);
   if (els.tagFilter) els.tagFilter.innerHTML = ['<option value="">全部</option>', ...(f.tags || []).map((tag) => `<option value="${tag.id}">${tag.name}</option>`)].join("");
   if (els.languageFilter) els.languageFilter.innerHTML = ['<option value="">全部</option>', ...(f.languages || []).map((language) => `<option value="${language.name}">${language.name}</option>`)].join("");
   if (els.genreFilter) els.genreFilter.innerHTML = ['<option value="">全部</option>', ...(f.genres || []).map((genre) => `<option value="${genre.id}">${genre.name}</option>`)].join("");
@@ -1012,11 +1062,70 @@ async function loadLanguages() {
     state.languages = [];
     showToast("加载语言失败: " + (err && err.message ? err.message : String(err)), "error");
   }
-  if (els.languageInput && Array.isArray(state.languages)) {
-    els.languageInput.innerHTML = state.languages.map((language) => `<option value="${language.id}">${language.name}</option>`).join("");
-  }
+  renderLanguageMultiSelect();
   renderLanguageManager();
   updateManagerSortIndicators("language");
+}
+
+function renderLanguageMultiSelect(selectedIds = []) {
+  if (!els.languageInput) return;
+  const options = state.languages || [];
+  const validSelectedIds = selectedIds.filter((id) => options.some((lang) => lang.id === id));
+  els.languageInput.innerHTML = `
+    <div class="multi-select-trigger" role="button" tabindex="0">${validSelectedIds.length ? `<span class="tag-list">${options.filter((l) => validSelectedIds.includes(l.id)).map((l) => `<span class="tag">${l.name}</span>`).join("")}</span>` : "请选择语言"}</div>
+    <div class="multi-select-menu hidden">
+      <input type="text" class="multi-select-search" placeholder="搜索..." />
+      <div class="multi-select-options">
+        ${options.map((lang) => `<div class="artist-option"><input type="checkbox" value="${lang.id}" data-name="${lang.name}" ${validSelectedIds.includes(lang.id) ? "checked" : ""} /><span>${lang.name}</span></div>`).join("")}
+      </div>
+    </div>
+  `;
+  const trigger = els.languageInput.querySelector('.multi-select-trigger');
+  const menu = els.languageInput.querySelector('.multi-select-menu');
+  const searchInput = menu.querySelector('.multi-select-search');
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeMultiSelect && activeMultiSelect !== menu) {
+      activeMultiSelect.classList.add('hidden');
+    }
+    const willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !willOpen);
+    activeMultiSelect = willOpen ? menu : null;
+    if (willOpen) setTimeout(() => searchInput?.focus(), 0);
+  });
+  menu.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  searchInput?.addEventListener('input', (event) => {
+    const keyword = event.target.value.toLowerCase();
+    const opts = menu.querySelectorAll('.artist-option');
+    opts.forEach((option) => {
+      const text = option.querySelector('span').textContent.toLowerCase();
+      option.style.display = keyword && !text.includes(keyword) ? 'none' : '';
+    });
+  });
+  menu.addEventListener('change', (event) => {
+    if (event.target.type === 'checkbox') {
+      updateLanguageTrigger();
+    }
+  });
+}
+
+function updateLanguageTrigger() {
+  if (!els.languageInput) return;
+  const checked = els.languageInput.querySelectorAll('input[type="checkbox"]:checked');
+  const trigger = els.languageInput.querySelector('.multi-select-trigger');
+  if (checked.length) {
+    trigger.innerHTML = `<span class="tag-list">${Array.from(checked).map(cb => `<span class="tag">${cb.dataset.name}</span>`).join("")}</span>`;
+  } else {
+    trigger.textContent = "请选择语言";
+  }
+}
+
+function getSelectedLanguageIds() {
+  if (!els.languageInput) return [];
+  return Array.from(els.languageInput.querySelectorAll('input[type="checkbox"]:checked')).map(cb => Number(cb.value));
 }
 
 async function loadGenres() {
@@ -1090,7 +1199,6 @@ async function loadPeople() {
     showToast("加载艺人失败: " + (err && err.message ? err.message : String(err)), "error");
   }
   if (els.leadArtistInput) renderArtistMultiSelect(els.leadArtistInput, getSelectedArtistIds(els.leadArtistInput));
-  if (els.chorusArtistInput) renderArtistMultiSelect(els.chorusArtistInput, getSelectedArtistIds(els.chorusArtistInput));
   if (els.lyricistInput) renderArtistMultiSelect(els.lyricistInput, getSelectedArtistIds(els.lyricistInput), "作词");
   if (els.composerInput) renderArtistMultiSelect(els.composerInput, getSelectedArtistIds(els.composerInput), "作曲");
   renderPeopleManager();
@@ -1105,7 +1213,6 @@ async function loadSongs() {
     if (els.keywordInput && els.keywordInput.value.trim()) params.set("keyword", els.keywordInput.value.trim());
     if (els.formatFilter && els.formatFilter.value) params.append("formats", els.formatFilter.value);
     if (els.leadArtistFilter && els.leadArtistFilter.value) params.append("lead_artists", els.leadArtistFilter.value);
-    if (els.chorusArtistFilter && els.chorusArtistFilter.value) params.append("chorus_artists", els.chorusArtistFilter.value);
     if (els.tagFilter && els.tagFilter.value) params.append("tag_ids", els.tagFilter.value);
     if (els.languageFilter && els.languageFilter.value) params.append("languages", els.languageFilter.value);
     if (els.genreFilter && els.genreFilter.value) params.append("genre_ids", els.genreFilter.value);
@@ -1281,14 +1388,16 @@ async function openEditModal(songId) {
   const detail = await request(`/songs/${songId}`);
   els.titleInput.value = detail.title || "";
   renderArtistMultiSelect(els.leadArtistInput, detail.lead_artist_ids || [], "歌手");
-  renderArtistMultiSelect(els.chorusArtistInput, detail.chorus_artist_ids || [], "歌手");
   renderArtistMultiSelect(els.lyricistInput, detail.lyricist_ids || [], "作词");
   renderArtistMultiSelect(els.composerInput, detail.composer_ids || [], "作曲");
   els.albumInput.value = detail.album || "";
   els.durationInput.value = detail.duration_ms || "";
   els.releaseDateInput.value = detail.release_date || "";
-  const selectedLanguage = state.languages.find((language) => language.name === detail.language) || state.languages[0];
-  if (selectedLanguage) els.languageInput.value = String(selectedLanguage.id);
+  const selectedLanguage = state.languages.find((language) => language.name === detail.language);
+  if (els.languageInput) {
+    renderLanguageMultiSelect(selectedLanguage ? [selectedLanguage.id] : []);
+  }
+  if (els.genreInput) els.genreInput.value = String(detail.genre_id || 0);
   const selectedTagIds = state.tags.filter((tag) => detail.tags.includes(tag.name)).map((tag) => tag.id);
   renderTagOptions(els.singleTagOptions, selectedTagIds);
   els.variantList.innerHTML = detail.files.map((file) => `<article class="variant-item"><strong>${file.original_filename}</strong><p class="variant-meta">${file.format.toUpperCase()} · ${file.bitrate ? `${file.bitrate} kbps` : "-"} · ${file.sample_rate ? `${file.sample_rate} Hz` : "-"} · ${formatSize(file.file_size)}</p></article>`).join("");
@@ -1303,18 +1412,20 @@ function closeEditModal() {
 async function saveSingleMetadata(event) {
   event.preventDefault();
   if (!state.editingSongId) return;
+  const genreId = els.genreInput ? Number(els.genreInput.value) : null;
+  const languageIds = getSelectedLanguageIds();
   await request(`/songs/${state.editingSongId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: els.titleInput.value.trim(),
       lead_artist_ids: getSelectedArtistIds(els.leadArtistInput),
-      chorus_artist_ids: getSelectedArtistIds(els.chorusArtistInput),
       lyricist_ids: getSelectedArtistIds(els.lyricistInput),
       composer_ids: getSelectedArtistIds(els.composerInput),
       album: els.albumInput.value.trim(),
       duration_ms: els.durationInput.value === "" ? null : Number(els.durationInput.value),
-      language_id: Number(els.languageInput.value),
+      language_id: languageIds.length > 0 ? languageIds[0] : null,
+      genre_id: genreId === 0 ? null : genreId,
       release_date: els.releaseDateInput.value || null,
       tag_ids: selectedTagIdsFromContainer(els.singleTagOptions),
     }),
@@ -1335,7 +1446,7 @@ els.toggleFilterBtn.addEventListener("click", () => {
   els.filterSection.classList.toggle("hidden");
   els.toggleFilterBtn.textContent = els.filterSection.classList.contains("hidden") ? "展开筛选" : "收起筛选";
 });
-[els.formatFilter, els.leadArtistFilter, els.chorusArtistFilter, els.tagFilter, els.languageFilter, els.genreFilter, els.lyricistFilter, els.composerFilter].forEach((el) => {
+[els.formatFilter, els.leadArtistFilter, els.tagFilter, els.languageFilter, els.genreFilter, els.lyricistFilter, els.composerFilter].forEach((el) => {
   el.addEventListener("change", () => loadSongs().catch((err) => showToast(`筛选失败: ${err.message}`, "error")));
 });
 els.sortButtons.forEach((button) => {
@@ -1350,6 +1461,12 @@ els.sortButtons.forEach((button) => {
   });
 });
 els.metadataForm.addEventListener("submit", (event) => saveSingleMetadata(event).catch((err) => showToast(`保存失败: ${err.message}`, "error")));
+els.metadataForm?.addEventListener("click", (e) => {
+  if (activeMultiSelect && !e.target.closest('.multi-select')) {
+    activeMultiSelect.classList.add('hidden');
+    activeMultiSelect = null;
+  }
+});
 els.editCloseBtn?.addEventListener("click", closeEditModal);
 els.editCancelBtn?.addEventListener("click", closeEditModal);
 els.editOverlay?.addEventListener("click", (e) => { 
@@ -1475,7 +1592,15 @@ els.modalOverlay.addEventListener("click", (event) => {
 });
 els.modalInput.addEventListener("keydown", (event) => { if (event.key === "Enter") closeModal(els.modalInput.value); });
 document.addEventListener("click", () => {
-  document.querySelectorAll('.table-more-menu').forEach((node) => node.classList.add("hidden"));
+  document.querySelectorAll('.table-more-menu').forEach((node) => {
+    node.classList.add("hidden");
+    node.classList.remove("table-more-menu-fixed");
+    node.style.top = "";
+    node.style.left = "";
+    node.style.right = "";
+    const home = node._tableMoreHome;
+    if (home && node.parentNode === document.body) home.appendChild(node);
+  });
   if (activeMultiSelect) {
     activeMultiSelect.classList.add('hidden');
     activeMultiSelect = null;
