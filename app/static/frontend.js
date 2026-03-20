@@ -12,6 +12,8 @@ const state = {
 
 const els = {
   keywordInput: document.querySelector("#keywordInput"),
+  frontKeywordClearBtn: document.querySelector("#frontKeywordClearBtn"),
+  resetFrontFiltersBtn: document.querySelector("#resetFrontFiltersBtn"),
   formatSelect: document.querySelector("#formatSelect"),
   tagSelect: document.querySelector("#tagSelect"),
   languageSelect: document.querySelector("#languageSelect"),
@@ -36,6 +38,12 @@ const els = {
   modalCancelBtn: document.querySelector("#modalCancelBtn"),
   modalConfirmBtn: document.querySelector("#modalConfirmBtn"),
   goAdminBtn: document.querySelector("#goAdminBtn"),
+  downloadFormatsOverlay: document.querySelector("#downloadFormatsOverlay"),
+  downloadFormatsHint: document.querySelector("#downloadFormatsHint"),
+  downloadFormatsList: document.querySelector("#downloadFormatsList"),
+  downloadFormatsCloseBtn: document.querySelector("#downloadFormatsCloseBtn"),
+  downloadFormatsCancelBtn: document.querySelector("#downloadFormatsCancelBtn"),
+  downloadFormatsConfirmBtn: document.querySelector("#downloadFormatsConfirmBtn"),
 };
 
 const modalState = { resolver: null };
@@ -69,6 +77,47 @@ function showToast(message, type = "info") {
   toast.textContent = message;
   els.toastContainer.appendChild(toast);
   window.setTimeout(() => toast.remove(), 2800);
+}
+
+function wireSearchFieldClear(inputEl, clearBtnEl, onCleared, onInputSync) {
+  if (!inputEl || !clearBtnEl) return;
+  const sync = () => {
+    clearBtnEl.classList.toggle("hidden", !inputEl.value.trim());
+    if (typeof onInputSync === "function") onInputSync();
+  };
+  inputEl.addEventListener("input", sync);
+  clearBtnEl.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    inputEl.value = "";
+    sync();
+    inputEl.focus();
+    if (typeof onCleared === "function") onCleared();
+  });
+  sync();
+}
+
+function frontHasActiveFilters() {
+  const kw = (els.keywordInput?.value || "").trim();
+  if (kw) return true;
+  if (els.formatSelect?.value) return true;
+  if (els.tagSelect?.value) return true;
+  if (els.languageSelect?.value) return true;
+  return false;
+}
+
+function updateFrontResetVisibility() {
+  if (!els.resetFrontFiltersBtn) return;
+  els.resetFrontFiltersBtn.classList.toggle("hidden", !frontHasActiveFilters());
+}
+
+function resetFrontSongListFilters() {
+  if (els.keywordInput) els.keywordInput.value = "";
+  if (els.frontKeywordClearBtn) els.frontKeywordClearBtn.classList.add("hidden");
+  if (els.formatSelect) els.formatSelect.value = "";
+  if (els.tagSelect) els.tagSelect.value = "";
+  if (els.languageSelect) els.languageSelect.value = "";
+  loadSongs().catch((err) => showToast(`加载失败: ${err.message}`, "error"));
 }
 
 function closeModal(result = null) {
@@ -109,10 +158,135 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function escapeHtml(str) {
+  const s = str == null ? "" : String(str);
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function normalizeDownloadFmt(f) {
+  return String(f || "").toLowerCase().replace(/^\./, "").trim();
+}
+
+function formatsFromSong(song) {
+  if (!song) return [];
+  const v = song.file_variants || [];
+  const fromVariants = v.map((x) => normalizeDownloadFmt(x.format)).filter(Boolean);
+  if (fromVariants.length) return [...new Set(fromVariants)].sort();
+  const fm = song.formats || [];
+  if (fm.length) return [...new Set(fm.map((x) => normalizeDownloadFmt(x)).filter(Boolean))].sort();
+  if (song.file_format) return [normalizeDownloadFmt(song.file_format)].filter(Boolean);
+  return [];
+}
+
+function unionFormatsFromSongs(songs) {
+  const set = new Set();
+  songs.forEach((s) => formatsFromSong(s).forEach((f) => set.add(f)));
+  return [...set].sort();
+}
+
+function songDownloadUrl(songId, formatList) {
+  const p = new URLSearchParams();
+  formatList.forEach((f) => p.append("formats", f));
+  const q = p.toString();
+  return getApiUrl(`/songs/${songId}/download${q ? `?${q}` : ""}`);
+}
+
+async function ensureSongFormatSource(song) {
+  if (!song?.id) return song;
+  if (formatsFromSong(song).length) return song;
+  const detail = await request(`/songs/${song.id}`);
+  return {
+    id: song.id,
+    title: detail.title,
+    file_variants: (detail.files || []).map((f) => ({ file_id: f.id, format: f.format })),
+    formats: (detail.files || []).map((f) => f.format).filter(Boolean),
+  };
+}
+
+function openDownloadFormatsPicker(songs, unionFormats) {
+  return new Promise((resolve) => {
+    const overlay = els.downloadFormatsOverlay;
+    const hint = els.downloadFormatsHint;
+    const listEl = els.downloadFormatsList;
+    if (!overlay || !listEl || !hint) {
+      resolve(null);
+      return;
+    }
+    const one = songs[0] || {};
+    hint.textContent = `「${one.title || one.id || "歌曲"}」：勾选要下载的格式（多选将打包为 ZIP，与后台一致）`;
+
+    listEl.innerHTML = unionFormats
+      .map((fmt) => {
+        const safe = String(fmt).replace(/"/g, "");
+        return `<label class="download-format-option"><input type="checkbox" name="dlfmt" value="${safe}" checked /><span>${escapeHtml(fmt.toUpperCase())}</span></label>`;
+      })
+      .join("");
+
+    const cleanup = () => {
+      els.downloadFormatsConfirmBtn?.removeEventListener("click", onConfirm);
+      els.downloadFormatsCancelBtn?.removeEventListener("click", onCancel);
+      els.downloadFormatsCloseBtn?.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onBackdrop);
+    };
+
+    const finish = (val) => {
+      overlay.classList.add("hidden");
+      cleanup();
+      resolve(val);
+    };
+
+    const onConfirm = () => {
+      const checked = Array.from(listEl.querySelectorAll('input[name="dlfmt"]:checked')).map((i) => i.value);
+      if (!checked.length) {
+        showToast("请至少选择一种格式", "error");
+        return;
+      }
+      finish(checked);
+    };
+    const onCancel = () => finish(null);
+    const onBackdrop = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    els.downloadFormatsConfirmBtn?.addEventListener("click", onConfirm);
+    els.downloadFormatsCancelBtn?.addEventListener("click", onCancel);
+    els.downloadFormatsCloseBtn?.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onBackdrop);
+    overlay.classList.remove("hidden");
+  });
+}
+
+/** 与后台单曲下载一致：多格式弹窗勾选；单格式直链 GET /songs/{id}/download；多文件服务端 ZIP */
+async function startSongDownloadFlow(songs) {
+  if (!songs?.length) return;
+  try {
+    const list = await Promise.all(songs.map(ensureSongFormatSource));
+    const union = unionFormatsFromSongs(list);
+    if (!union.length) {
+      showToast("没有可下载的音频格式", "error");
+      return;
+    }
+    const run = (selectedFormats) => {
+      window.location.href = songDownloadUrl(list[0].id, selectedFormats);
+      showToast("正在下载…", "success");
+    };
+    if (union.length === 1) {
+      run([union[0]]);
+      return;
+    }
+    const selected = await openDownloadFormatsPicker(list, union);
+    if (!selected?.length) return;
+    run(selected);
+  } catch (err) {
+    showToast(`下载失败: ${err.message || err}`, "error");
+  }
+}
+
 function renderFilterOptions() {
   els.formatSelect.innerHTML = ['<option value="">全部格式</option>', ...((state.filters?.formats || []).map((v) => `<option value="${v}">${v.toUpperCase()}</option>`))].join("");
   els.tagSelect.innerHTML = ['<option value="">全部标签</option>', ...((state.filters?.tags || []).map((tag) => `<option value="${tag.id}">${tag.name}</option>`))].join("");
   els.languageSelect.innerHTML = ['<option value="">全部语言</option>', ...((state.filters?.languages || []).map((lang) => `<option value="${lang.name}">${lang.name}</option>`))].join("");
+  updateFrontResetVisibility();
 }
 
 async function loadFilterOptions() {
@@ -158,6 +332,7 @@ async function loadSongs() {
   }
   syncQueue();
   renderSongList();
+  updateFrontResetVisibility();
 }
 
 async function loadPlaylists() {
@@ -384,16 +559,7 @@ function renderSongList() {
     });
     item.querySelector('[data-role="download"]').addEventListener("click", async (e) => {
       e.stopPropagation();
-      try {
-        const playInfo = await request(`/songs/${song.id}/play`);
-        const link = document.createElement("a");
-        link.href = playInfo.download_url;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } catch (err) {
-        showToast(`下载失败: ${err.message}`, "error");
-      }
+      await startSongDownloadFlow([song]);
     });
     const delBtn = item.querySelector('[data-role="delete"]');
     if (delBtn) {
@@ -433,9 +599,16 @@ els.audioPlayer.addEventListener("ended", () => {
   const idx = nextIndex();
   if (idx >= 0) playSong(state.queue[idx].id).catch(() => {});
 });
+wireSearchFieldClear(
+  els.keywordInput,
+  els.frontKeywordClearBtn,
+  () => loadSongs().catch((err) => showToast(`查询失败: ${err.message}`, "error")),
+  () => updateFrontResetVisibility()
+);
 els.keywordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") loadSongs().catch((err) => showToast(`查询失败: ${err.message}`, "error"));
 });
+els.resetFrontFiltersBtn?.addEventListener("click", () => resetFrontSongListFilters());
 [els.formatSelect, els.tagSelect, els.languageSelect].forEach((el) => {
   el.addEventListener("change", () => loadSongs().catch((err) => showToast(`筛选失败: ${err.message}`, "error")));
 });

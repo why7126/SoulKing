@@ -336,6 +336,10 @@ async function runScan() {
     }
     await loadPlaylists();
     showToast(`扫描完成: 扫描 ${result.scanned_count}，新增 ${result.added_count}，跳过 ${result.skipped_count}`, "success");
+    if (result.skipped_count > 0 && Array.isArray(result.skipped_details) && result.skipped_details.length) {
+      const lines = result.skipped_details.map((d) => `${d.path}: ${d.reason || "未知原因"}`);
+      window.alert(`以下文件已跳过：\n\n${lines.join("\n")}`);
+    }
   } catch (err) {
     showToast(`扫描失败: ${err.message}`, "error");
   } finally {

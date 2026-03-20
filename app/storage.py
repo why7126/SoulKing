@@ -55,3 +55,14 @@ class S3Storage:
         if byte_range:
             params["Range"] = byte_range
         return self.client.get_object(**params)
+
+    def delete_object(self, object_key: str) -> None:
+        self.client.delete_object(Bucket=self.settings.s3_bucket_music, Key=object_key)
+
+    def copy_object(self, src_key: str, dest_key: str) -> None:
+        bucket = self.settings.s3_bucket_music
+        self.client.copy_object(
+            Bucket=bucket,
+            Key=dest_key,
+            CopySource={"Bucket": bucket, "Key": src_key},
+        )

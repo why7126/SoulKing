@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.datetime_util import now_cn_naive
 
 
 class Artist(Base):
@@ -13,7 +14,7 @@ class Artist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     types: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
 
 class Album(Base):
@@ -23,7 +24,7 @@ class Album(Base):
     name: Mapped[str] = mapped_column(String(255), index=True)
     artist_id: Mapped[Optional[int]] = mapped_column(ForeignKey("artists.id"), nullable=True)
     year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     __table_args__ = (UniqueConstraint("name", "artist_id", name="uq_album_name_artist"),)
 
@@ -40,11 +41,15 @@ class Song(Base):
     genre_id: Mapped[Optional[int]] = mapped_column(ForeignKey("genres.id"), nullable=True, index=True)
     release_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive, onupdate=now_cn_naive)
 
+    # 不含 delete-orphan；passive_deletes=True：删除 Song 时不要让 ORM 去改子表 FK（合并后文件已改挂主曲，误触会置 NULL 违反 NOT NULL）
     files: Mapped[list["SongFile"]] = relationship(
-        "SongFile", back_populates="song", cascade="all, delete-orphan"
+        "SongFile",
+        back_populates="song",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
 
 
@@ -65,11 +70,11 @@ class SongFile(Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     is_lossless: Mapped[bool] = mapped_column(Boolean, default=False)
     is_playable_web: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     song: Mapped[Song] = relationship("Song", back_populates="files")
 
-    __table_args__ = (UniqueConstraint("sha256", "file_size", name="uq_song_file_hash_size"),)
+    # 仅 object_key 全局唯一；同一歌曲下可保留多条相同 sha256+file_size（合并后多路径指向相同字节时仍保留各行）。
 
 
 class ScanJob(Base):
@@ -81,7 +86,7 @@ class ScanJob(Base):
     scanned_count: Mapped[int] = mapped_column(Integer, default=0)
     added_count: Mapped[int] = mapped_column(Integer, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -91,7 +96,7 @@ class Playlist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     items: Mapped[list["PlaylistItem"]] = relationship(
         "PlaylistItem", back_populates="playlist", cascade="all, delete-orphan"
@@ -105,7 +110,7 @@ class PlaylistItem(Base):
     playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     playlist: Mapped[Playlist] = relationship("Playlist", back_populates="items")
 
@@ -117,7 +122,7 @@ class Tag(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
 
 class SongTag(Base):
@@ -126,7 +131,7 @@ class SongTag(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     __table_args__ = (UniqueConstraint("song_id", "tag_id", name="uq_song_tag"),)
 
@@ -136,7 +141,17 @@ class Language(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
+
+
+class SongLanguage(Base):
+    __tablename__ = "song_languages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
+    language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), index=True)
+
+    __table_args__ = (UniqueConstraint("song_id", "language_id", name="uq_song_language"),)
 
 
 class Genre(Base):
@@ -144,7 +159,17 @@ class Genre(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
+
+
+class SongGenre(Base):
+    __tablename__ = "song_genres"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
+    genre_id: Mapped[int] = mapped_column(ForeignKey("genres.id"), index=True)
+
+    __table_args__ = (UniqueConstraint("song_id", "genre_id", name="uq_song_genre"),)
 
 
 class SongLeadArtist(Base):
@@ -153,7 +178,7 @@ class SongLeadArtist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
 
 class SongChorusArtist(Base):
@@ -162,7 +187,7 @@ class SongChorusArtist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
 
 class SongLyricistArtist(Base):
@@ -171,7 +196,7 @@ class SongLyricistArtist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
 
 class SongComposerArtist(Base):
@@ -180,4 +205,4 @@ class SongComposerArtist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     song_id: Mapped[int] = mapped_column(ForeignKey("songs.id"), index=True)
     artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)

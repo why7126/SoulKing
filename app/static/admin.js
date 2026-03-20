@@ -6,6 +6,8 @@ const state = {
   people: [],
   filters: null,
   editingSongId: null,
+  editingCurrentFileId: null,
+  variantFileActionsSetup: false,
   sortBy: "created_at",
   sortOrder: "desc",
   playQueue: [],
@@ -22,6 +24,8 @@ const state = {
   batchDeleteManager: null,
   scanProgressTimer: null,
   selectedSongs: new Set(),
+  /** 歌曲列表行选择的播放/下载格式，空字符串表示自动（服务端推荐） */
+  songFormatPreference: {},
   peopleSortBy: "name",
   peopleSortOrder: "asc",
   tagSortBy: "name",
@@ -53,11 +57,10 @@ const els = {
   adminNavTags: document.querySelector("#adminNavTags"),
   adminNavLanguage: document.querySelector("#adminNavLanguage"),
   adminNavGenre: document.querySelector("#adminNavGenre"),
-  genreSearchInput: document.querySelector("#genreSearchInput"),
-  genreNewBtn: document.querySelector("#genreNewBtn"),
-  genreManagerList: document.querySelector("#genreManagerList"),
   goFrontendBtn: document.querySelector("#goFrontendBtn"),
   keywordInput: document.querySelector("#keywordInput"),
+  keywordClearBtn: document.querySelector("#keywordClearBtn"),
+  resetSongFiltersBtn: document.querySelector("#resetSongFiltersBtn"),
   toggleFilterBtn: document.querySelector("#toggleFilterBtn"),
   filterSection: document.querySelector("#filterSection"),
   formatFilter: document.querySelector("#formatFilter"),
@@ -72,8 +75,15 @@ const els = {
   songTableBody: document.querySelector("#songTableBody"),
   sortButtons: Array.from(document.querySelectorAll(".sort-btn")),
   selectAllSongs: document.querySelector("#selectAllSongs"),
+  batchMergeDuplicatesBtn: document.querySelector("#batchMergeDuplicatesBtn"),
+  batchMergeSelectedBtn: document.querySelector("#batchMergeSelectedBtn"),
   batchDeleteBtn: document.querySelector("#batchDeleteBtn"),
   batchDownloadBtn: document.querySelector("#batchDownloadBtn"),
+  relocateSelectedStorageBtn: document.querySelector("#relocateSelectedStorageBtn"),
+  relocateProgressWrap: document.querySelector("#relocateProgressWrap"),
+  relocateProgressText: document.querySelector("#relocateProgressText"),
+  relocateProgressStats: document.querySelector("#relocateProgressStats"),
+  relocateProgressFill: document.querySelector("#relocateProgressFill"),
   toastContainer: document.querySelector("#toastContainer"),
   modalOverlay: document.querySelector("#modalOverlay"),
   modalTitle: document.querySelector("#modalTitle"),
@@ -95,25 +105,32 @@ const els = {
   releaseDateInput: document.querySelector("#releaseDateInput"),
   singleTagOptions: document.querySelector("#singleTagOptions"),
   variantList: document.querySelector("#variantList"),
+  editDrawerBackdrop: document.querySelector("#editDrawerBackdrop"),
   editCloseBtn: document.querySelector("#editCloseBtn"),
   editCancelBtn: document.querySelector("#editCancelBtn"),
+  songAddFileBtn: document.querySelector("#songAddFileBtn"),
+  songAddFileInput: document.querySelector("#songAddFileInput"),
   tagSearchInput: document.querySelector("#tagSearchInput"),
+  tagSearchClearBtn: document.querySelector("#tagSearchClearBtn"),
   tagNewBtn: document.querySelector("#tagNewBtn"),
   tagManagerList: document.querySelector("#tagManagerList"),
   tagTableBody: document.querySelector("#tagTableBody"),
   peopleSearchInput: document.querySelector("#peopleSearchInput"),
+  peopleSearchClearBtn: document.querySelector("#peopleSearchClearBtn"),
   peopleNewBtn: document.querySelector("#peopleNewBtn"),
   peopleBatchDeleteBtn: document.querySelector("#peopleBatchDeleteBtn"),
   selectAllPeople: document.querySelector("#selectAllPeople"),
   peopleManagerList: document.querySelector("#peopleManagerList"),
   peopleTableBody: document.querySelector("#peopleTableBody"),
   languageSearchInput: document.querySelector("#languageSearchInput"),
+  languageSearchClearBtn: document.querySelector("#languageSearchClearBtn"),
   languageNewBtn: document.querySelector("#languageNewBtn"),
   languageBatchDeleteBtn: document.querySelector("#languageBatchDeleteBtn"),
   selectAllLanguages: document.querySelector("#selectAllLanguages"),
   languageManagerList: document.querySelector("#languageManagerList"),
   languageTableBody: document.querySelector("#languageTableBody"),
   genreSearchInput: document.querySelector("#genreSearchInput"),
+  genreSearchClearBtn: document.querySelector("#genreSearchClearBtn"),
   genreNewBtn: document.querySelector("#genreNewBtn"),
   genreBatchDeleteBtn: document.querySelector("#genreBatchDeleteBtn"),
   selectAllGenres: document.querySelector("#selectAllGenres"),
@@ -139,6 +156,21 @@ const els = {
   deleteCloseBtn: document.querySelector("#deleteCloseBtn"),
   deleteCancelBtn: document.querySelector("#deleteCancelBtn"),
   deleteConfirmBtn: document.querySelector("#deleteConfirmBtn"),
+  skippedOverlay: document.querySelector("#skippedOverlay"),
+  skippedFilesTableBody: document.querySelector("#skippedFilesTableBody"),
+  skippedCloseBtn: document.querySelector("#skippedCloseBtn"),
+  skippedDismissBtn: document.querySelector("#skippedDismissBtn"),
+  mergeTargetOverlay: document.querySelector("#mergeTargetOverlay"),
+  mergeTargetList: document.querySelector("#mergeTargetList"),
+  mergeTargetCloseBtn: document.querySelector("#mergeTargetCloseBtn"),
+  mergeTargetCancelBtn: document.querySelector("#mergeTargetCancelBtn"),
+  mergeTargetConfirmBtn: document.querySelector("#mergeTargetConfirmBtn"),
+  downloadFormatsOverlay: document.querySelector("#downloadFormatsOverlay"),
+  downloadFormatsHint: document.querySelector("#downloadFormatsHint"),
+  downloadFormatsList: document.querySelector("#downloadFormatsList"),
+  downloadFormatsCloseBtn: document.querySelector("#downloadFormatsCloseBtn"),
+  downloadFormatsCancelBtn: document.querySelector("#downloadFormatsCancelBtn"),
+  downloadFormatsConfirmBtn: document.querySelector("#downloadFormatsConfirmBtn"),
   adminNowPlaying: document.querySelector("#adminNowPlaying"),
   adminPrevBtn: document.querySelector("#adminPrevBtn"),
   adminNextBtn: document.querySelector("#adminNextBtn"),
@@ -151,20 +183,76 @@ let activeMultiSelect = null;
 
 async function request(path, options = {}) {
   const res = await fetch(path, options);
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+    let msg = (text && text.trim()) || `Request failed: ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      if (typeof j.detail === "string") msg = j.detail;
+      else if (Array.isArray(j.detail))
+        msg = j.detail.map((e) => (e && e.msg ? e.msg : JSON.stringify(e))).join("；");
+      else if (j.detail != null && typeof j.detail === "object") msg = JSON.stringify(j.detail);
+    } catch (_) {
+      /* 非 JSON 时使用原文本 */
+    }
+    throw new Error(msg);
   }
   if (res.status === 204) return null;
-  return res.json();
+  if (!text || !text.trim()) return null;
+  return JSON.parse(text);
 }
 
-function showToast(message, type = "info") {
+function showToast(message, type = "info", durationMs) {
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
   toast.textContent = message;
   els.toastContainer.appendChild(toast);
-  setTimeout(() => toast.remove(), 2800);
+  const ms =
+    durationMs != null
+      ? durationMs
+      : type === "error" && String(message).length > 140
+        ? 11000
+        : 2800;
+  setTimeout(() => toast.remove(), ms);
+}
+
+/** 搜索框内一键清空；可选 onInputSync（每次输入同步 UI）；清空后 onCleared */
+function wireSearchFieldClear(inputEl, clearBtnEl, onCleared, onInputSync) {
+  if (!inputEl || !clearBtnEl) return;
+  const sync = () => {
+    clearBtnEl.classList.toggle("hidden", !inputEl.value.trim());
+    if (typeof onInputSync === "function") onInputSync();
+  };
+  inputEl.addEventListener("input", sync);
+  clearBtnEl.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    inputEl.value = "";
+    sync();
+    inputEl.focus();
+    if (typeof onCleared === "function") onCleared();
+  });
+  sync();
+}
+
+function adminMusicHasActiveFilters() {
+  const kw = (els.keywordInput?.value || "").trim();
+  if (kw) return true;
+  const selects = [
+    els.formatFilter,
+    els.leadArtistFilter,
+    els.tagFilter,
+    els.languageFilter,
+    els.genreFilter,
+    els.lyricistFilter,
+    els.composerFilter,
+  ];
+  return selects.some((el) => el && el.value);
+}
+
+function updateAdminMusicResetVisibility() {
+  if (!els.resetSongFiltersBtn) return;
+  els.resetSongFiltersBtn.classList.toggle("hidden", !adminMusicHasActiveFilters());
 }
 
 function adminNextPlayIndex() {
@@ -185,11 +273,13 @@ function adminPrevPlayIndex() {
   return -1;
 }
 
-async function playSongInAdmin(songId, preferredFormat = "") {
-  const url = preferredFormat ? `/songs/${songId}/play?preferred_format=${encodeURIComponent(preferredFormat)}` : `/songs/${songId}/play`;
+async function playSongInAdmin(songId, preferredFormat = "", queueIndex = -1) {
+  const params = new URLSearchParams();
+  if (preferredFormat) params.set("preferred_format", preferredFormat);
+  const url = `/songs/${songId}/play${params.toString() ? "?" + params.toString() : ""}`;
   const playInfo = await request(url);
   state.playQueue = state.songs.slice();
-  state.currentPlayIndex = state.playQueue.findIndex((s) => s.id === songId);
+  state.currentPlayIndex = queueIndex >= 0 ? queueIndex : state.playQueue.findIndex((s) => s.id === songId);
   const song = state.playQueue[state.currentPlayIndex] || { title: "未知歌曲" };
   if (els.adminAudioPlayer) {
     els.adminAudioPlayer.src = playInfo.stream_url;
@@ -213,6 +303,7 @@ function showAdminPage(page) {
   const navEl = document.querySelector(`.admin-nav-item[data-page="${page}"]`);
   if (pageEl) pageEl.classList.remove("hidden");
   if (navEl) navEl.classList.add("active");
+  if (page === "music") updateAdminMusicResetVisibility();
 }
 
 function openCreateModal(type, editData = null) {
@@ -343,6 +434,323 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function escapeHtml(str) {
+  const s = str == null ? "" : String(str);
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/** 扫描/添加完成后展示跳过文件及原因 */
+function showSkippedFilesModal(details) {
+  const body = els.skippedFilesTableBody;
+  if (!body || !els.skippedOverlay) return;
+  const rows = Array.isArray(details) ? details : [];
+  body.innerHTML = rows
+    .map(
+      (d) =>
+        `<tr><td class="col-path">${escapeHtml(d.path)}</td><td>${escapeHtml(d.reason || "未知原因")}</td></tr>`
+    )
+    .join("");
+  els.skippedOverlay.classList.remove("hidden");
+}
+
+function closeSkippedFilesModal() {
+  els.skippedOverlay?.classList.add("hidden");
+}
+
+/** 抽屉内音频行：图标按钮（title 为悬停说明） */
+const VARIANT_ICONS = {
+  play: `<svg class="icon-btn-svg" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
+  download: `<svg class="icon-btn-svg" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`,
+  rename: `<svg class="icon-btn-svg" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`,
+  delete: `<svg class="icon-btn-svg" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`,
+};
+
+/** 从展示用文件名得到主文件名（去掉与 format 一致的后缀） */
+function filenameStemForRename(displayName, format) {
+  const fmt = (format || "").toLowerCase().replace(/^\./, "");
+  if (!fmt || !displayName) return (displayName || "").trim();
+  const re = new RegExp(`\\.${fmt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+  return displayName.replace(re, "").trim();
+}
+
+async function parseResponseError(res) {
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text);
+    if (j.detail !== undefined) {
+      return typeof j.detail === "string" ? j.detail : Array.isArray(j.detail) ? j.detail.map((x) => x.msg || JSON.stringify(x)).join("; ") : JSON.stringify(j.detail);
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return text || `HTTP ${res.status}`;
+}
+
+function normalizeDownloadFmt(f) {
+  return String(f || "").toLowerCase().replace(/^\./, "").trim();
+}
+
+function formatsFromSong(song) {
+  if (!song) return [];
+  const v = song.file_variants || [];
+  const fromVariants = v.map((x) => normalizeDownloadFmt(x.format)).filter(Boolean);
+  if (fromVariants.length) return [...new Set(fromVariants)].sort();
+  const fm = song.formats || [];
+  if (fm.length) return [...new Set(fm.map((x) => normalizeDownloadFmt(x)).filter(Boolean))].sort();
+  if (song.file_format) return [normalizeDownloadFmt(song.file_format)].filter(Boolean);
+  return [];
+}
+
+function unionFormatsFromSongs(songs) {
+  const set = new Set();
+  songs.forEach((s) => formatsFromSong(s).forEach((f) => set.add(f)));
+  return [...set].sort();
+}
+
+function songDownloadUrl(songId, formatList) {
+  const p = new URLSearchParams();
+  formatList.forEach((f) => p.append("formats", f));
+  const q = p.toString();
+  return `/songs/${songId}/download${q ? `?${q}` : ""}`;
+}
+
+async function ensureSongFormatSource(song) {
+  if (!song?.id) return song;
+  if (formatsFromSong(song).length) return song;
+  const detail = await request(`/songs/${song.id}`);
+  return {
+    id: song.id,
+    title: detail.title,
+    file_variants: (detail.files || []).map((f) => ({ file_id: f.id, format: f.format })),
+    formats: (detail.files || []).map((f) => f.format).filter(Boolean),
+  };
+}
+
+async function execBatchDownload(songIds, formats) {
+  const res = await fetch("/admin/songs/batch-download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "*/*" },
+    body: JSON.stringify({ song_ids: songIds, formats }),
+  });
+  if (!res.ok) {
+    const msg = await parseResponseError(res);
+    throw new Error(msg);
+  }
+  const disp = res.headers.get("Content-Disposition") || "";
+  let filename = "music_download.zip";
+  const mStar = /filename\*=UTF-8''([^;\s]+)/i.exec(disp);
+  const mPlain = /filename="([^"]+)"/i.exec(disp);
+  if (mStar) {
+    try {
+      filename = decodeURIComponent(mStar[1].trim());
+    } catch (_) {
+      filename = mStar[1].trim();
+    }
+  } else if (mPlain) {
+    filename = mPlain[1];
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function openDownloadFormatsPicker(songs, unionFormats) {
+  return new Promise((resolve) => {
+    const overlay = els.downloadFormatsOverlay;
+    const hint = els.downloadFormatsHint;
+    const listEl = els.downloadFormatsList;
+    if (!overlay || !listEl || !hint) {
+      resolve(null);
+      return;
+    }
+    const single = songs.length === 1 ? songs[0] : null;
+    hint.textContent = single
+      ? `「${single.title || "歌曲"}」：勾选要下载的格式（多选将打包为 ZIP）`
+      : `已选 ${songs.length} 首：下载各首中存在的勾选格式；总文件数大于 1 时打包为 ZIP。`;
+
+    listEl.innerHTML = unionFormats
+      .map((fmt) => {
+        const safe = String(fmt).replace(/"/g, "");
+        return `<label class="download-format-option"><input type="checkbox" name="dlfmt" value="${safe}" checked /><span>${escapeHtml(fmt.toUpperCase())}</span></label>`;
+      })
+      .join("");
+
+    const cleanup = () => {
+      els.downloadFormatsConfirmBtn?.removeEventListener("click", onConfirm);
+      els.downloadFormatsCancelBtn?.removeEventListener("click", onCancel);
+      els.downloadFormatsCloseBtn?.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onBackdrop);
+    };
+
+    const finish = (val) => {
+      overlay.classList.add("hidden");
+      cleanup();
+      resolve(val);
+    };
+
+    const onConfirm = () => {
+      const checked = Array.from(listEl.querySelectorAll('input[name="dlfmt"]:checked')).map((i) => i.value);
+      if (!checked.length) {
+        showToast("请至少选择一种格式", "error");
+        return;
+      }
+      finish(checked);
+    };
+    const onCancel = () => finish(null);
+    const onBackdrop = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    els.downloadFormatsConfirmBtn?.addEventListener("click", onConfirm);
+    els.downloadFormatsCancelBtn?.addEventListener("click", onCancel);
+    els.downloadFormatsCloseBtn?.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onBackdrop);
+    overlay.classList.remove("hidden");
+  });
+}
+
+/** 单曲 / 批量：先解析可用格式；多种格式时弹窗多选；单文件直链下载，多文件服务端 ZIP */
+async function startDownloadFlow(songs) {
+  if (!songs?.length) return;
+  try {
+    const list = await Promise.all(songs.map(ensureSongFormatSource));
+    const union = unionFormatsFromSongs(list);
+    if (!union.length) {
+      showToast("没有可下载的音频格式", "error");
+      return;
+    }
+
+    const run = async (selectedFormats) => {
+      if (list.length === 1) {
+        window.location.href = songDownloadUrl(list[0].id, selectedFormats);
+      } else {
+        await execBatchDownload(
+          list.map((s) => s.id),
+          selectedFormats
+        );
+      }
+      showToast("正在下载…", "success");
+    };
+
+    if (union.length === 1) {
+      await run([union[0]]);
+      return;
+    }
+
+    const selected = await openDownloadFormatsPicker(list, union);
+    if (!selected?.length) return;
+    await run(selected);
+  } catch (err) {
+    showToast(`下载失败: ${err.message || err}`, "error");
+  }
+}
+
+function setupVariantListFileActions() {
+  if (!els.variantList || state.variantFileActionsSetup) return;
+  state.variantFileActionsSetup = true;
+  els.variantList.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-variant-file-action]");
+    if (!btn) return;
+    e.preventDefault();
+    const fileId = Number(btn.dataset.fileId);
+    const action = btn.dataset.variantFileAction;
+    if (!fileId) return;
+    const item = btn.closest(".variant-item");
+    const titleEl = item?.querySelector(".variant-file-title");
+    const titleText = titleEl ? titleEl.textContent.trim() : "音频";
+
+    if (action === "preview") {
+      if (els.adminAudioPlayer) {
+        els.adminAudioPlayer.src = `/song-files/${fileId}/stream`;
+        els.adminAudioPlayer.play().catch(() => showToast("无法播放", "error"));
+      }
+      if (els.adminNowPlaying) {
+        const fmt = (btn.dataset.format || "").toUpperCase();
+        els.adminNowPlaying.textContent = fmt ? `${titleText} · ${fmt}` : `${titleText} · 试听`;
+      }
+      return;
+    }
+    if (action === "download") {
+      const link = document.createElement("a");
+      link.href = `/song-files/${fileId}/download`;
+      link.download = "";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+    if (action === "rename") {
+      const fileFormat = (btn.dataset.fileFormat || "").trim().toLowerCase().replace(/^\./, "");
+      if (!fileFormat) {
+        showToast("无法重命名：缺少格式信息", "error");
+        return;
+      }
+      const defaultStem = filenameStemForRename(titleText, fileFormat);
+      const val = await openModal({
+        title: "重命名音频文件",
+        message: `仅可修改主文件名（不含扩展名），格式固定为 .${fileFormat}，不可更改。`,
+        defaultValue: defaultStem,
+        confirmText: "保存",
+        withInput: true,
+      });
+      if (val == null) return;
+      let stem = String(val).trim();
+      if (stem.toLowerCase().endsWith(`.${fileFormat}`)) {
+        stem = stem.slice(0, -(fileFormat.length + 1)).trim();
+      }
+      if (!stem) {
+        showToast("主文件名不能为空", "error");
+        return;
+      }
+      if (/[/\\]/.test(stem)) {
+        showToast("名称不能包含路径分隔符", "error");
+        return;
+      }
+      const name = `${stem}.${fileFormat}`;
+      try {
+        await request(`/song-files/${fileId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ original_filename: name }),
+        });
+        showToast("已更新文件名", "success");
+        if (state.editingSongId) {
+          await openEditModal(state.editingSongId, state.editingCurrentFileId, { preserveMetadata: true });
+        }
+        await loadSongs().catch(() => {});
+      } catch (err) {
+        showToast(`重命名失败: ${err.message || err}`, "error");
+      }
+      return;
+    }
+    if (action === "delete") {
+      const ok = await openModal({
+        title: "删除音频文件",
+        message: `确定删除「${titleText}」吗？将从曲库与存储中移除该文件，且不可恢复。`,
+        confirmText: "删除",
+        withInput: false,
+      });
+      if (!ok) return;
+      try {
+        await request(`/song-files/${fileId}`, { method: "DELETE" });
+        showToast("音频文件已删除", "success");
+        if (state.editingSongId) {
+          await openEditModal(state.editingSongId, state.editingCurrentFileId, { preserveMetadata: true });
+        }
+        await loadSongs().catch(() => {});
+      } catch (err) {
+        showToast(`删除失败: ${err.message || err}`, "error");
+      }
+    }
+  });
+}
+
 function formatDate(value) {
   if (!value) return "-";
   const isoValue = /z$/i.test(value) || /[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`;
@@ -372,55 +780,109 @@ function peopleByType(type) {
   return state.people.filter((person) => (person.types || []).includes(type));
 }
 
+/** 模糊匹配：子串命中，或关键字字符按顺序出现在名称中 */
+function fuzzyMatchName(text, query) {
+  const t = (text || "").toLowerCase();
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return true;
+  if (t.includes(q)) return true;
+  let i = 0;
+  for (let j = 0; j < t.length && i < q.length; j += 1) {
+    if (t[j] === q[i]) i += 1;
+  }
+  return i === q.length;
+}
+
+/** 点击选项行（除复选框外）切换勾选；搜索框点击不处理 */
+function attachMultiSelectOptionRowClick(menu) {
+  menu.addEventListener("click", (e) => {
+    const search = menu.querySelector(".multi-select-search");
+    if (search && (e.target === search || search.contains(e.target))) {
+      e.stopPropagation();
+      return;
+    }
+    const row = e.target.closest(".artist-option");
+    if (row && menu.contains(row) && !(e.target instanceof HTMLInputElement && e.target.type === "checkbox")) {
+      const cb = row.querySelector('input[type="checkbox"]');
+      if (cb) {
+        e.preventDefault();
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    e.stopPropagation();
+  });
+}
+
 function renderArtistMultiSelect(container, selectedIds = [], type = "歌手") {
   const sourcePeople = peopleByType(type);
   const validSelectedIds = selectedIds.filter((id) => sourcePeople.some((person) => person.id === id));
-  const selectedNames = sourcePeople.filter((person) => validSelectedIds.includes(person.id)).map((person) => person.name);
+  container._searchText = "";
+  container._artistSelectedIds = new Set(validSelectedIds);
+
   container.innerHTML = `
-    <div class="multi-select-trigger" role="button" tabindex="0">${selectedNames.length ? `<span class="tag-list">${selectedNames.map((name) => `<span class="tag">${name}</span>`).join("")}</span>` : "请选择"}</div>
+    <div class="multi-select-trigger" role="button" tabindex="0">请选择</div>
     <div class="multi-select-menu hidden">
-      <input type="text" class="multi-select-search" placeholder="搜索..." />
-      <div class="multi-select-options">
-        ${sourcePeople.map((person) => `<div class="artist-option"><input type="checkbox" value="${person.id}" ${validSelectedIds.includes(person.id) ? "checked" : ""} /><span>${person.name}</span></div>`).join("")}
-      </div>
+      <input type="text" class="multi-select-search" placeholder="搜索..." autocomplete="off" />
+      <div class="multi-select-options"></div>
     </div>
   `;
-  const trigger = container.querySelector('.multi-select-trigger');
-  const menu = container.querySelector('.multi-select-menu');
-  const searchInput = menu.querySelector('.multi-select-search');
-  trigger.addEventListener('click', (event) => {
+  const trigger = container.querySelector(".multi-select-trigger");
+  const menu = container.querySelector(".multi-select-menu");
+  const searchInput = menu.querySelector(".multi-select-search");
+  const optionsEl = menu.querySelector(".multi-select-options");
+
+  const updateTrigger = () => {
+    const names = sourcePeople.filter((p) => container._artistSelectedIds.has(p.id)).map((p) => p.name);
+    trigger.innerHTML = names.length ? `<span class="tag-list">${names.map((n) => `<span class="tag">${n}</span>`).join("")}</span>` : "请选择";
+  };
+
+  const rebuildOptions = () => {
+    const kw = (container._searchText || "").trim();
+    const sel = container._artistSelectedIds;
+    const list = !kw ? sourcePeople : sourcePeople.filter((p) => fuzzyMatchName(p.name, kw) || sel.has(p.id));
+    if (!list.length) {
+      optionsEl.innerHTML = '<div class="multi-select-empty muted" style="padding:10px 8px;font-size:13px;">无匹配结果</div>';
+      return;
+    }
+    optionsEl.innerHTML = list
+      .map(
+        (person) =>
+          `<div class="artist-option"><input type="checkbox" value="${person.id}" ${sel.has(person.id) ? "checked" : ""} /><span>${person.name}</span></div>`
+      )
+      .join("");
+  };
+
+  updateTrigger();
+  rebuildOptions();
+
+  trigger.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (activeMultiSelect && activeMultiSelect !== menu) {
-      activeMultiSelect.classList.add('hidden');
-    }
-    const willOpen = menu.classList.contains('hidden');
-    menu.classList.toggle('hidden', !willOpen);
+    if (activeMultiSelect && activeMultiSelect !== menu) activeMultiSelect.classList.add("hidden");
+    const willOpen = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !willOpen);
     activeMultiSelect = willOpen ? menu : null;
     if (willOpen) setTimeout(() => searchInput?.focus(), 0);
   });
-  menu.addEventListener('click', (event) => {
-    event.stopPropagation();
+  searchInput?.addEventListener("click", (e) => e.stopPropagation());
+  searchInput?.addEventListener("input", (event) => {
+    container._searchText = event.target.value;
+    rebuildOptions();
   });
-  searchInput?.addEventListener('input', (event) => {
-    const keyword = event.target.value.toLowerCase();
-    const options = menu.querySelectorAll('.artist-option');
-    options.forEach((option) => {
-      const text = option.querySelector('span').textContent.toLowerCase();
-      option.style.display = keyword && !text.includes(keyword) ? 'none' : '';
-    });
-  });
-  menu.addEventListener('change', (event) => {
-    if (event.target.type === 'checkbox') {
-      renderArtistMultiSelect(container, getSelectedArtistIds(container), type);
-      const nextMenu = container.querySelector('.multi-select-menu');
-      nextMenu?.classList.remove('hidden');
-      activeMultiSelect = nextMenu || null;
+  attachMultiSelectOptionRowClick(menu);
+  menu.addEventListener("change", (event) => {
+    if (event.target.type === "checkbox") {
+      const id = Number(event.target.value);
+      if (event.target.checked) container._artistSelectedIds.add(id);
+      else container._artistSelectedIds.delete(id);
+      updateTrigger();
     }
   });
 }
 
 function getSelectedArtistIds(container) {
+  if (container._artistSelectedIds instanceof Set) return Array.from(container._artistSelectedIds);
   return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((node) => Number(node.value));
 }
 
@@ -511,7 +973,7 @@ function renderSongs() {
   els.songTableBody.innerHTML = "";
   const songs = state.songs || [];
   if (!songs.length) {
-    els.songTableBody.innerHTML = '<tr><td colspan="15" class="empty-cell">暂无歌曲</td></tr>';
+    els.songTableBody.innerHTML = '<tr><td colspan="16" class="empty-cell">暂无歌曲</td></tr>';
     renderSortIndicators();
     return;
   }
@@ -522,11 +984,22 @@ function renderSongs() {
   songs.forEach((song, index) => {
     const tr = document.createElement("tr");
     const isChecked = state.selectedSongs.has(song.id);
+    const variants = song.file_variants || [];
+    const formatTags = (song.formats || []).length
+      ? (song.formats || []).map((f) => `<span class="format-tag">${String(f).toUpperCase()}</span>`).join("")
+      : "-";
+    const formatSelect =
+      variants.length > 0
+        ? `<select class="song-format-select" data-song-id="${song.id}" title="试听/下载使用的文件格式，选「自动」则按服务端规则（优先网页可播等）">
+            <option value="">自动（推荐）</option>
+            ${variants.map((v) => `<option value="${(v.format || "").replace(/"/g, "&quot;")}">${(v.format || "").toUpperCase()}</option>`).join("")}
+          </select>`
+        : "";
     tr.innerHTML = `
-      <td><input type="checkbox" class="song-checkbox" value="${song.id}" ${isChecked ? "checked" : ""} /></td>
-      <td>${index + 1}</td>
-      <td><button class="song-link-btn" data-role="title" type="button">${song.title || "-"}</button></td>
-      <td>${song.lead_artist || "-"}</td>
+      <td class="col-check"><input type="checkbox" class="song-checkbox" value="${song.id}" ${isChecked ? "checked" : ""} /></td>
+      <td class="col-idx">${index + 1}</td>
+      <td class="col-sticky-title"><button class="song-link-btn" data-role="title" type="button">${song.title || "-"}</button></td>
+      <td class="col-sticky-lead">${song.lead_artist || "-"}</td>
       <td>${(song.lyricists || []).join(" / ") || "-"}</td>
       <td>${(song.composers || []).join(" / ") || "-"}</td>
       <td>${song.album || "-"}</td>
@@ -535,9 +1008,9 @@ function renderSongs() {
       <td>${(song.tags || []).join(" / ") || "-"}</td>
       <td>${song.release_date || "-"}</td>
       <td>${formatDuration(song.duration_ms)}</td>
-      <td>${song.file_format ? song.file_format.toUpperCase() : "-"}</td>
-      <td>${formatSize(song.file_size)}</td>
+      <td class="song-formats-cell"><div class="format-tags">${formatTags}</div>${formatSelect}</td>
       <td>${formatDate(song.created_at)}</td>
+      <td>${song.updated_at ? formatDate(song.updated_at) : "-"}</td>
       <td>
         <div class="table-more">
           <button class="btn table-more-btn" data-role="more" type="button" aria-label="更多">⋮</button>
@@ -560,6 +1033,15 @@ function renderSongs() {
       }
       updateBatchButtons();
     });
+    const fmtSelect = tr.querySelector(".song-format-select");
+    if (fmtSelect) {
+      const saved = state.songFormatPreference[song.id];
+      if (saved) fmtSelect.value = saved;
+      fmtSelect.addEventListener("change", () => {
+        if (fmtSelect.value) state.songFormatPreference[song.id] = fmtSelect.value;
+        else delete state.songFormatPreference[song.id];
+      });
+    }
     tr.querySelector('[data-role="title"]').addEventListener("click", () => openEditModal(song.id));
     const moreBtn = tr.querySelector('[data-role="more"]');
     const menu = tr.querySelector('[data-role="menu"]');
@@ -606,21 +1088,12 @@ function renderSongs() {
     }
     tr.querySelector('[data-role="preview"]')?.addEventListener("click", () => {
       closeMenuAndReturnHome();
-      playSongInAdmin(song.id).catch((err) => showToast(`试听失败: ${err.message || err}`, "error"));
+      const fmt = tr.querySelector(".song-format-select")?.value || state.songFormatPreference[song.id] || "";
+      playSongInAdmin(song.id, fmt, index).catch((err) => showToast(`试听失败: ${err.message || err}`, "error"));
     });
     tr.querySelector('[data-role="download"]')?.addEventListener("click", async () => {
       closeMenuAndReturnHome();
-      try {
-        const playInfo = await request(`/songs/${song.id}/play`);
-        const link = document.createElement("a");
-        link.href = playInfo.download_url;
-        link.download = "";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } catch (err) {
-        showToast(`下载失败: ${err.message || err}`, "error");
-      }
+      await startDownloadFlow([song]);
     });
     tr.querySelector('[data-role="edit"]').addEventListener("click", () => {
       closeMenuAndReturnHome();
@@ -648,9 +1121,18 @@ function updateBatchButtons() {
     els.batchDeleteBtn.textContent = `批量删除 (${selectedCount})`;
     els.batchDownloadBtn.classList.remove("hidden");
     els.batchDownloadBtn.textContent = `批量下载 (${selectedCount})`;
+    els.relocateSelectedStorageBtn.classList.remove("hidden");
+    els.relocateSelectedStorageBtn.textContent = `同步存储路径 (${selectedCount})`;
   } else {
     els.batchDeleteBtn.classList.add("hidden");
     els.batchDownloadBtn.classList.add("hidden");
+    els.relocateSelectedStorageBtn.classList.add("hidden");
+  }
+  if (selectedCount >= 2) {
+    els.batchMergeSelectedBtn.classList.remove("hidden");
+    els.batchMergeSelectedBtn.textContent = `合并所选歌曲 (${selectedCount})`;
+  } else {
+    els.batchMergeSelectedBtn.classList.add("hidden");
   }
 }
 
@@ -671,12 +1153,186 @@ async function batchDeleteSongs() {
   showToast("批量删除完成", "success");
 }
 
+async function batchMergeDuplicateSongs() {
+  const ok = await openModal({
+    title: "合并重复曲目",
+    message:
+      "将按「相同标题 + 相同主艺人 + 相近时长」自动合并重复歌曲，保留 id 最小的为主曲。是否继续？",
+    confirmText: "合并",
+    withInput: false,
+  });
+  if (!ok) return;
+  try {
+    const stats = await request("/admin/merge-duplicate-songs", { method: "POST" });
+    const g = stats.merged_duplicate_groups ?? 0;
+    const s = stats.merged_slave_songs ?? 0;
+    showToast(g || s ? `已处理 ${g} 组重复，合并 ${s} 条从曲（仅元数据与文件归属，未删音频）` : "未发现可合并的重复曲目", g || s ? "success" : "info");
+    await Promise.all([loadSongs(), loadFilterOptions()]);
+  } catch (err) {
+    showToast(`合并失败: ${err.message || err}`, "error");
+  }
+}
+
+async function relocateSelectedSongStorage() {
+  const ids = [...getSelectedSongIds()].sort((a, b) => a - b);
+  if (!ids.length) {
+    showToast("请先勾选至少一首歌曲", "error");
+    return;
+  }
+  const ok = await openModal({
+    title: "按元数据同步存储路径",
+    message: `将对勾选的 ${ids.length} 首歌曲，按当前「原唱、歌名、文件名」规则逐首调整对象存储路径（桶内复制成功后删除旧键）。确定执行？`,
+    withInput: false,
+    confirmText: "开始同步",
+  });
+  if (!ok) return;
+
+  const toggleBarriers = [els.relocateSelectedStorageBtn, els.batchMergeSelectedBtn, els.batchDeleteBtn, els.batchDownloadBtn];
+  const setBusy = (busy) => {
+    toggleBarriers.forEach((el) => {
+      if (el) el.disabled = busy;
+    });
+  };
+
+  els.relocateProgressWrap.classList.remove("hidden");
+  els.relocateProgressText.textContent = "正在同步存储路径...";
+  els.relocateProgressFill.style.width = "0%";
+  setBusy(true);
+
+  let filesMoved = 0;
+  const errors = [];
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      els.relocateProgressStats.textContent = `处理中 ${i + 1} / ${ids.length} · 歌曲 ID ${id}`;
+      els.relocateProgressFill.style.width = `${Math.round((i / Math.max(ids.length, 1)) * 100)}%`;
+      try {
+        const res = await request(`/admin/songs/${id}/relocate-storage`, { method: "POST" });
+        filesMoved += res.files_moved ?? 0;
+      } catch (err) {
+        errors.push({ id, message: err.message || String(err) });
+      }
+      els.relocateProgressFill.style.width = `${Math.round(((i + 1) / ids.length) * 100)}%`;
+    }
+    els.relocateProgressText.textContent = "同步完成";
+    els.relocateProgressStats.textContent = errors.length
+      ? `完成 ${ids.length} 首，${errors.length} 首失败`
+      : `完成 ${ids.length} 首`;
+    const base = `已处理 ${ids.length} 首，共搬迁 ${filesMoved} 个文件`;
+    showToast(errors.length ? `${base}；${errors.length} 首失败` : base, errors.length ? "error" : "success");
+    await loadSongs().catch(() => {});
+  } catch (err) {
+    showToast(`同步失败: ${err.message || err}`, "error");
+  } finally {
+    setBusy(false);
+    setTimeout(() => {
+      els.relocateProgressWrap.classList.add("hidden");
+    }, errors.length ? 2200 : 900);
+  }
+}
+
+/** 弹窗：在已选歌曲中选择合并目标（保留哪一条 Song） */
+function pickMergeTargetMasterSong(ids) {
+  const idSet = new Set(ids);
+  const rows = (state.songs || []).filter((s) => idSet.has(s.id));
+  if (rows.length < ids.length) {
+    showToast("部分所选歌曲不在当前列表中，请先刷新后再试", "error");
+    return Promise.resolve(null);
+  }
+  rows.sort((a, b) => a.id - b.id);
+
+  return new Promise((resolve) => {
+    const overlay = els.mergeTargetOverlay;
+    const listEl = els.mergeTargetList;
+    if (!overlay || !listEl) {
+      showToast("合并弹窗未就绪", "error");
+      resolve(null);
+      return;
+    }
+
+    listEl.innerHTML = rows
+      .map((s, i) => {
+        const who = escapeHtml(s.lead_artist || s.artist || "—");
+        const title = escapeHtml(s.title || "");
+        const fmtList = Array.isArray(s.formats) && s.formats.length
+          ? s.formats.map((f) => String(f || "").toUpperCase()).join(" / ")
+          : s.file_format
+            ? String(s.file_format).toUpperCase()
+            : "—";
+        const fmt = escapeHtml(fmtList);
+        const created = escapeHtml(formatDate(s.created_at));
+        return `<label class="merge-target-option">
+  <input type="radio" name="mergeTargetMaster" value="${s.id}" ${i === 0 ? "checked" : ""} />
+  <span class="merge-target-label">
+    <span class="merge-target-line merge-target-title"><span class="merge-target-id">ID ${s.id}</span><span class="merge-target-song-title">${title}</span></span>
+    <span class="merge-target-meta">
+      <span class="merge-target-kv"><span class="merge-target-k">原唱</span><span class="merge-target-v">${who}</span></span>
+      <span class="merge-target-kv"><span class="merge-target-k">格式</span><span class="merge-target-v">${fmt}</span></span>
+      <span class="merge-target-kv"><span class="merge-target-k">创建时间</span><span class="merge-target-v">${created}</span></span>
+    </span>
+  </span>
+</label>`;
+      })
+      .join("");
+
+    const finish = (masterId) => {
+      overlay.classList.add("hidden");
+      els.mergeTargetConfirmBtn?.removeEventListener("click", onConfirm);
+      els.mergeTargetCancelBtn?.removeEventListener("click", onCancel);
+      els.mergeTargetCloseBtn?.removeEventListener("click", onCancel);
+      overlay.removeEventListener("click", onBackdrop);
+      resolve(masterId);
+    };
+
+    const onConfirm = () => {
+      const r = listEl.querySelector('input[name="mergeTargetMaster"]:checked');
+      finish(r ? Number(r.value) : null);
+    };
+    const onCancel = () => finish(null);
+    const onBackdrop = (e) => {
+      if (e.target === overlay) onCancel();
+    };
+
+    els.mergeTargetConfirmBtn?.addEventListener("click", onConfirm);
+    els.mergeTargetCancelBtn?.addEventListener("click", onCancel);
+    els.mergeTargetCloseBtn?.addEventListener("click", onCancel);
+    overlay.addEventListener("click", onBackdrop);
+    overlay.classList.remove("hidden");
+  });
+}
+
+async function batchMergeSelectedSongs() {
+  const ids = getSelectedSongIds();
+  if (ids.length < 2) {
+    showToast("请至少勾选 2 首歌曲", "error");
+    return;
+  }
+  const masterId = await pickMergeTargetMasterSong(ids);
+  if (masterId == null) return;
+
+  try {
+    const res = await request("/admin/songs/merge-selected", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song_ids: ids, master_song_id: masterId }),
+    });
+    state.selectedSongs.clear();
+    showToast(`已合并到歌曲 ID ${res.master_id}，并入 ${res.merged_slave_songs} 首其他曲目的音频（主曲元数据未改）`, "success");
+    await Promise.all([loadSongs(), loadFilterOptions()]);
+  } catch (err) {
+    showToast(`合并失败: ${err.message || err}`, "error");
+  }
+}
+
 async function batchDownloadSongs() {
   const ids = getSelectedSongIds();
   if (!ids.length) return;
-  const idsParam = ids.join(",");
-  window.location.href = `/admin/songs/batch-download?song_ids=${idsParam}`;
-  showToast(`正在打包下载 ${ids.length} 首歌曲`, "success");
+  const songs = ids.map((id) => state.songs.find((s) => s.id === id)).filter(Boolean);
+  if (songs.length !== ids.length) {
+    showToast("部分所选歌曲不在当前列表，请刷新后重试", "error");
+    return;
+  }
+  await startDownloadFlow(songs);
 }
 
 function createInlineManagerItem(itemData, type) {
@@ -1069,63 +1725,152 @@ async function loadLanguages() {
 
 function renderLanguageMultiSelect(selectedIds = []) {
   if (!els.languageInput) return;
-  const options = state.languages || [];
-  const validSelectedIds = selectedIds.filter((id) => options.some((lang) => lang.id === id));
-  els.languageInput.innerHTML = `
-    <div class="multi-select-trigger" role="button" tabindex="0">${validSelectedIds.length ? `<span class="tag-list">${options.filter((l) => validSelectedIds.includes(l.id)).map((l) => `<span class="tag">${l.name}</span>`).join("")}</span>` : "请选择语言"}</div>
+  const langs = state.languages || [];
+  const validSelectedIds = selectedIds.filter((id) => langs.some((l) => l.id === id));
+  const container = els.languageInput;
+  container._searchText = "";
+  container._languageSelectedIds = new Set(validSelectedIds);
+
+  container.innerHTML = `
+    <div class="multi-select-trigger" role="button" tabindex="0">请选择语言</div>
     <div class="multi-select-menu hidden">
-      <input type="text" class="multi-select-search" placeholder="搜索..." />
-      <div class="multi-select-options">
-        ${options.map((lang) => `<div class="artist-option"><input type="checkbox" value="${lang.id}" data-name="${lang.name}" ${validSelectedIds.includes(lang.id) ? "checked" : ""} /><span>${lang.name}</span></div>`).join("")}
-      </div>
+      <input type="text" class="multi-select-search" placeholder="搜索..." autocomplete="off" />
+      <div class="multi-select-options"></div>
     </div>
   `;
-  const trigger = els.languageInput.querySelector('.multi-select-trigger');
-  const menu = els.languageInput.querySelector('.multi-select-menu');
-  const searchInput = menu.querySelector('.multi-select-search');
-  trigger.addEventListener('click', (event) => {
+  const trigger = container.querySelector(".multi-select-trigger");
+  const menu = container.querySelector(".multi-select-menu");
+  const searchInput = menu.querySelector(".multi-select-search");
+  const optionsEl = menu.querySelector(".multi-select-options");
+
+  const updateTrigger = () => {
+    const names = langs.filter((l) => container._languageSelectedIds.has(l.id)).map((l) => l.name);
+    trigger.innerHTML = names.length ? `<span class="tag-list">${names.map((n) => `<span class="tag">${n}</span>`).join("")}</span>` : "请选择语言";
+  };
+
+  const rebuildOptions = () => {
+    const kw = (container._searchText || "").trim();
+    const sel = container._languageSelectedIds;
+    const list = !kw ? langs : langs.filter((l) => fuzzyMatchName(l.name, kw) || sel.has(l.id));
+    if (!list.length) {
+      optionsEl.innerHTML = '<div class="multi-select-empty muted" style="padding:10px 8px;font-size:13px;">无匹配结果</div>';
+      return;
+    }
+    optionsEl.innerHTML = list
+      .map(
+        (l) =>
+          `<div class="artist-option"><input type="checkbox" value="${l.id}" data-name="${l.name}" ${sel.has(l.id) ? "checked" : ""} /><span>${l.name}</span></div>`
+      )
+      .join("");
+  };
+
+  updateTrigger();
+  rebuildOptions();
+
+  trigger.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (activeMultiSelect && activeMultiSelect !== menu) {
-      activeMultiSelect.classList.add('hidden');
-    }
-    const willOpen = menu.classList.contains('hidden');
-    menu.classList.toggle('hidden', !willOpen);
+    if (activeMultiSelect && activeMultiSelect !== menu) activeMultiSelect.classList.add("hidden");
+    const willOpen = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !willOpen);
     activeMultiSelect = willOpen ? menu : null;
     if (willOpen) setTimeout(() => searchInput?.focus(), 0);
   });
-  menu.addEventListener('click', (event) => {
-    event.stopPropagation();
+  searchInput?.addEventListener("click", (e) => e.stopPropagation());
+  searchInput?.addEventListener("input", (event) => {
+    container._searchText = event.target.value;
+    rebuildOptions();
   });
-  searchInput?.addEventListener('input', (event) => {
-    const keyword = event.target.value.toLowerCase();
-    const opts = menu.querySelectorAll('.artist-option');
-    opts.forEach((option) => {
-      const text = option.querySelector('span').textContent.toLowerCase();
-      option.style.display = keyword && !text.includes(keyword) ? 'none' : '';
-    });
-  });
-  menu.addEventListener('change', (event) => {
-    if (event.target.type === 'checkbox') {
-      updateLanguageTrigger();
+  attachMultiSelectOptionRowClick(menu);
+  menu.addEventListener("change", (event) => {
+    if (event.target.type === "checkbox") {
+      const id = Number(event.target.value);
+      if (event.target.checked) container._languageSelectedIds.add(id);
+      else container._languageSelectedIds.delete(id);
+      updateTrigger();
     }
   });
-}
-
-function updateLanguageTrigger() {
-  if (!els.languageInput) return;
-  const checked = els.languageInput.querySelectorAll('input[type="checkbox"]:checked');
-  const trigger = els.languageInput.querySelector('.multi-select-trigger');
-  if (checked.length) {
-    trigger.innerHTML = `<span class="tag-list">${Array.from(checked).map(cb => `<span class="tag">${cb.dataset.name}</span>`).join("")}</span>`;
-  } else {
-    trigger.textContent = "请选择语言";
-  }
 }
 
 function getSelectedLanguageIds() {
   if (!els.languageInput) return [];
-  return Array.from(els.languageInput.querySelectorAll('input[type="checkbox"]:checked')).map(cb => Number(cb.value));
+  if (els.languageInput._languageSelectedIds instanceof Set) return Array.from(els.languageInput._languageSelectedIds);
+  return Array.from(els.languageInput.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => Number(cb.value));
+}
+
+function renderGenreMultiSelect(selectedIds = []) {
+  if (!els.genreInput) return;
+  const genres = state.genres || [];
+  const validSelectedIds = selectedIds.filter((id) => genres.some((g) => g.id === id));
+  const container = els.genreInput;
+  container._searchText = "";
+  container._genreSelectedIds = new Set(validSelectedIds);
+
+  container.innerHTML = `
+    <div class="multi-select-trigger" role="button" tabindex="0">请选择风格</div>
+    <div class="multi-select-menu hidden">
+      <input type="text" class="multi-select-search" placeholder="搜索..." autocomplete="off" />
+      <div class="multi-select-options"></div>
+    </div>
+  `;
+  const trigger = container.querySelector(".multi-select-trigger");
+  const menu = container.querySelector(".multi-select-menu");
+  const searchInput = menu.querySelector(".multi-select-search");
+  const optionsEl = menu.querySelector(".multi-select-options");
+
+  const updateTrigger = () => {
+    const names = genres.filter((g) => container._genreSelectedIds.has(g.id)).map((g) => g.name);
+    trigger.innerHTML = names.length ? `<span class="tag-list">${names.map((n) => `<span class="tag">${n}</span>`).join("")}</span>` : "请选择风格";
+  };
+
+  const rebuildOptions = () => {
+    const kw = (container._searchText || "").trim();
+    const sel = container._genreSelectedIds;
+    const list = !kw ? genres : genres.filter((g) => fuzzyMatchName(g.name, kw) || sel.has(g.id));
+    if (!list.length) {
+      optionsEl.innerHTML = '<div class="multi-select-empty muted" style="padding:10px 8px;font-size:13px;">无匹配结果</div>';
+      return;
+    }
+    optionsEl.innerHTML = list
+      .map(
+        (g) =>
+          `<div class="artist-option"><input type="checkbox" value="${g.id}" data-name="${g.name}" ${sel.has(g.id) ? "checked" : ""} /><span>${g.name}</span></div>`
+      )
+      .join("");
+  };
+
+  updateTrigger();
+  rebuildOptions();
+
+  trigger.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeMultiSelect && activeMultiSelect !== menu) activeMultiSelect.classList.add("hidden");
+    const willOpen = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !willOpen);
+    activeMultiSelect = willOpen ? menu : null;
+    if (willOpen) setTimeout(() => searchInput?.focus(), 0);
+  });
+  searchInput?.addEventListener("click", (e) => e.stopPropagation());
+  searchInput?.addEventListener("input", (event) => {
+    container._searchText = event.target.value;
+    rebuildOptions();
+  });
+  attachMultiSelectOptionRowClick(menu);
+  menu.addEventListener("change", (event) => {
+    if (event.target.type === "checkbox") {
+      const id = Number(event.target.value);
+      if (event.target.checked) container._genreSelectedIds.add(id);
+      else container._genreSelectedIds.delete(id);
+      updateTrigger();
+    }
+  });
+}
+
+function getSelectedGenreIds() {
+  if (!els.genreInput) return [];
+  if (els.genreInput._genreSelectedIds instanceof Set) return Array.from(els.genreInput._genreSelectedIds);
+  return Array.from(els.genreInput.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => Number(cb.value));
 }
 
 async function loadGenres() {
@@ -1135,9 +1880,7 @@ async function loadGenres() {
     state.genres = [];
     showToast("加载风格失败: " + (err && err.message ? err.message : String(err)), "error");
   }
-  if (els.genreInput) {
-    els.genreInput.innerHTML = ['<option value="0">无</option>', ...state.genres.map((g) => `<option value="${g.id}">${g.name}</option>`)].join("");
-  }
+  renderGenreMultiSelect();
   renderGenreManager();
   updateManagerSortIndicators("genre");
 }
@@ -1205,6 +1948,18 @@ async function loadPeople() {
   updateManagerSortIndicators("people");
 }
 
+function resetAdminSongListFilters() {
+  if (els.keywordInput) els.keywordInput.value = "";
+  if (els.keywordClearBtn) els.keywordClearBtn.classList.add("hidden");
+  [els.formatFilter, els.leadArtistFilter, els.tagFilter, els.languageFilter, els.genreFilter, els.lyricistFilter, els.composerFilter].forEach((el) => {
+    if (el) el.value = "";
+  });
+  state.sortBy = "created_at";
+  state.sortOrder = "desc";
+  renderSortIndicators();
+  loadSongs().catch((err) => showToast(`加载失败: ${err.message}`, "error"));
+}
+
 async function loadSongs() {
   state.selectedSongs.clear();
   updateBatchButtons();
@@ -1227,6 +1982,7 @@ async function loadSongs() {
     showToast("加载歌曲失败: " + (err && err.message ? err.message : String(err)), "error");
   }
   renderSongs();
+  updateAdminMusicResetVisibility();
 }
 
 async function runScan() {
@@ -1270,6 +2026,13 @@ async function runScan() {
     els.scanSummary.textContent = `扫描完成，总共${finalProgress.total_count}个文件，新增${finalProgress.added_count}个文件，跳过${finalProgress.skipped_count}个文件，总耗时${elapsedStr}`;
     await Promise.all([loadFilterOptions(), loadSongs()]);
     showToast("扫描完成", "success");
+    if (
+      finalProgress.skipped_count > 0 &&
+      Array.isArray(finalProgress.skipped_details) &&
+      finalProgress.skipped_details.length
+    ) {
+      showSkippedFilesModal(finalProgress.skipped_details);
+    }
   } catch (err) {
     showToast(`扫描失败: ${err.message}`, "error");
   } finally {
@@ -1326,6 +2089,13 @@ async function addSongs() {
     els.scanSummary.textContent = `添加完成，总共${finalProgress.total_count}个文件，新增${finalProgress.added_count}个文件，跳过${finalProgress.skipped_count}个文件，总耗时${elapsedStr}`;
     await Promise.all([loadFilterOptions(), loadSongs()]);
     showToast("添加完成", "success");
+    if (
+      finalProgress.skipped_count > 0 &&
+      Array.isArray(finalProgress.skipped_details) &&
+      finalProgress.skipped_details.length
+    ) {
+      showSkippedFilesModal(finalProgress.skipped_details);
+    }
   } catch (err) {
     showToast(`添加歌曲失败: ${err.message}`, "error");
   } finally {
@@ -1383,36 +2153,94 @@ async function pollScanProgress() {
   }
 }
 
-async function openEditModal(songId) {
+/**
+ * @param {number} songId
+ * @param {number|null} currentFileId
+ * @param {{ preserveMetadata?: boolean }} [options] preserveMetadata：为 true 时不覆盖抽屉内表单（仅刷新文件列表），用于添加/重命名/删除音频后保留未保存的编辑
+ */
+async function openEditModal(songId, currentFileId = null, options = {}) {
+  const preserveMetadata = options.preserveMetadata === true;
   state.editingSongId = songId;
+  state.editingCurrentFileId = currentFileId ?? null;
   const detail = await request(`/songs/${songId}`);
-  els.titleInput.value = detail.title || "";
-  renderArtistMultiSelect(els.leadArtistInput, detail.lead_artist_ids || [], "歌手");
-  renderArtistMultiSelect(els.lyricistInput, detail.lyricist_ids || [], "作词");
-  renderArtistMultiSelect(els.composerInput, detail.composer_ids || [], "作曲");
-  els.albumInput.value = detail.album || "";
-  els.durationInput.value = detail.duration_ms || "";
-  els.releaseDateInput.value = detail.release_date || "";
-  const selectedLanguage = state.languages.find((language) => language.name === detail.language);
-  if (els.languageInput) {
-    renderLanguageMultiSelect(selectedLanguage ? [selectedLanguage.id] : []);
+  if (!preserveMetadata) {
+    els.titleInput.value = detail.title || "";
+    renderArtistMultiSelect(els.leadArtistInput, detail.lead_artist_ids || [], "歌手");
+    renderArtistMultiSelect(els.lyricistInput, detail.lyricist_ids || [], "作词");
+    renderArtistMultiSelect(els.composerInput, detail.composer_ids || [], "作曲");
+    els.albumInput.value = detail.album || "";
+    els.durationInput.value = detail.duration_ms || "";
+    els.releaseDateInput.value = detail.release_date || "";
+    if (els.languageInput) {
+      let langIds = Array.isArray(detail.language_ids) && detail.language_ids.length ? [...detail.language_ids] : [];
+      if (!langIds.length && detail.language && (state.languages || []).length) {
+        langIds = detail.language.split(/,\s*/).map((n) => (state.languages || []).find((l) => l.name === n.trim())?.id).filter(Boolean);
+      }
+      renderLanguageMultiSelect(langIds);
+    }
+    const genreIds = (detail.genre_ids && detail.genre_ids.length) ? detail.genre_ids : detail.genre_id ? [detail.genre_id] : [];
+    if (els.genreInput) renderGenreMultiSelect(genreIds);
+    const selectedTagIds = state.tags.filter((tag) => detail.tags.includes(tag.name)).map((tag) => tag.id);
+    renderTagOptions(els.singleTagOptions, selectedTagIds);
   }
-  if (els.genreInput) els.genreInput.value = String(detail.genre_id || 0);
-  const selectedTagIds = state.tags.filter((tag) => detail.tags.includes(tag.name)).map((tag) => tag.id);
-  renderTagOptions(els.singleTagOptions, selectedTagIds);
-  els.variantList.innerHTML = detail.files.map((file) => `<article class="variant-item"><strong>${file.original_filename}</strong><p class="variant-meta">${file.format.toUpperCase()} · ${file.bitrate ? `${file.bitrate} kbps` : "-"} · ${file.sample_rate ? `${file.sample_rate} Hz` : "-"} · ${formatSize(file.file_size)}</p></article>`).join("");
+  const fileCount = (detail.files || []).length;
+  const isMultiFile = fileCount > 1;
+  els.variantList.innerHTML = (detail.files || []).map((file) => {
+    const isCurrentRow = currentFileId != null && file.id === currentFileId;
+    const label = isCurrentRow && isMultiFile ? ' <span class="variant-current-label">当前列表行</span>' : "";
+    const fmt = (file.format || "").toUpperCase();
+    const metaLine = `${fmt} · ${file.bitrate ? `${file.bitrate} kbps` : "-"} · ${file.sample_rate ? `${file.sample_rate} Hz` : "-"} · ${formatSize(file.file_size)}`;
+    return `<article class="variant-item${isCurrentRow ? " variant-item-current" : ""}" data-file-id="${file.id}">
+      <div class="variant-row">
+        <div class="variant-row-info">
+          <strong class="variant-file-title">${escapeHtml(file.original_filename)}</strong>${label}
+          <span class="variant-meta-inline">${escapeHtml(metaLine)}</span>
+        </div>
+        <div class="variant-row-actions">
+          <button type="button" class="icon-btn" data-variant-file-action="preview" data-file-id="${file.id}" data-format="${escapeHtml(file.format || "")}" title="试听" aria-label="试听">${VARIANT_ICONS.play}</button>
+          <button type="button" class="icon-btn" data-variant-file-action="download" data-file-id="${file.id}" title="下载" aria-label="下载">${VARIANT_ICONS.download}</button>
+          <button type="button" class="icon-btn" data-variant-file-action="rename" data-file-id="${file.id}" data-file-format="${escapeHtml(file.format || "")}" title="重命名主文件名（扩展名不可改）" aria-label="重命名">${VARIANT_ICONS.rename}</button>
+          <button type="button" class="icon-btn icon-btn-danger" data-variant-file-action="delete" data-file-id="${file.id}" title="删除（同时移除存储中的文件）" aria-label="删除">${VARIANT_ICONS.delete}</button>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+  setupVariantListFileActions();
+  let caption = document.getElementById("variantListHeading");
+  if (!caption) {
+    caption = document.createElement("p");
+    caption.id = "variantListHeading";
+    caption.className = "song-meta variant-list-caption";
+    els.variantList.parentNode.insertBefore(caption, els.variantList);
+  }
+  if (fileCount > 0) {
+    if (isMultiFile) {
+      caption.textContent =
+        currentFileId != null
+          ? "多条音频：已标注当前列表行。右侧图标悬停可查看说明；支持重命名与添加文件。"
+          : "多条音频共用一套元数据。图标悬停查看功能；列表「格式」用于播放。";
+    } else {
+      caption.textContent = "图标悬停可查看试听、下载、重命名、删除说明；可用「添加文件」增加格式版本。";
+    }
+    caption.style.display = "";
+  } else {
+    caption.textContent = "暂无音频文件，点击「添加文件」从本地上传。";
+    caption.style.display = "";
+  }
   els.editOverlay.classList.remove("hidden");
+  els.editOverlay.setAttribute("aria-hidden", "false");
 }
 
 function closeEditModal() {
   els.editOverlay.classList.add("hidden");
+  els.editOverlay.setAttribute("aria-hidden", "true");
   state.editingSongId = null;
+  state.editingCurrentFileId = null;
 }
 
 async function saveSingleMetadata(event) {
   event.preventDefault();
   if (!state.editingSongId) return;
-  const genreId = els.genreInput ? Number(els.genreInput.value) : null;
   const languageIds = getSelectedLanguageIds();
   await request(`/songs/${state.editingSongId}`, {
     method: "PUT",
@@ -1424,8 +2252,8 @@ async function saveSingleMetadata(event) {
       composer_ids: getSelectedArtistIds(els.composerInput),
       album: els.albumInput.value.trim(),
       duration_ms: els.durationInput.value === "" ? null : Number(els.durationInput.value),
-      language_id: languageIds.length > 0 ? languageIds[0] : null,
-      genre_id: genreId === 0 ? null : genreId,
+      language_ids: languageIds,
+      genre_ids: getSelectedGenreIds(),
       release_date: els.releaseDateInput.value || null,
       tag_ids: selectedTagIdsFromContainer(els.singleTagOptions),
     }),
@@ -1439,9 +2267,21 @@ function getSelectedIds(selectEl) {
   return Array.from(selectEl.selectedOptions).map((option) => Number(option.value));
 }
 
+wireSearchFieldClear(
+  els.keywordInput,
+  els.keywordClearBtn,
+  () => loadSongs().catch((err) => showToast(`查询失败: ${err.message}`, "error")),
+  () => updateAdminMusicResetVisibility()
+);
+wireSearchFieldClear(els.peopleSearchInput, els.peopleSearchClearBtn, () => renderPeopleManager());
+wireSearchFieldClear(els.tagSearchInput, els.tagSearchClearBtn, () => renderTagManager());
+wireSearchFieldClear(els.languageSearchInput, els.languageSearchClearBtn, () => renderLanguageManager());
+wireSearchFieldClear(els.genreSearchInput, els.genreSearchClearBtn, () => renderGenreManager());
+
 els.keywordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") loadSongs().catch((err) => showToast(`查询失败: ${err.message}`, "error"));
 });
+els.resetSongFiltersBtn?.addEventListener("click", () => resetAdminSongListFilters());
 els.toggleFilterBtn.addEventListener("click", () => {
   els.filterSection.classList.toggle("hidden");
   els.toggleFilterBtn.textContent = els.filterSection.classList.contains("hidden") ? "展开筛选" : "收起筛选";
@@ -1469,9 +2309,28 @@ els.metadataForm?.addEventListener("click", (e) => {
 });
 els.editCloseBtn?.addEventListener("click", closeEditModal);
 els.editCancelBtn?.addEventListener("click", closeEditModal);
-els.editOverlay?.addEventListener("click", (e) => { 
-  e.stopPropagation();
-  if (e.target === els.editOverlay) closeEditModal(); 
+els.editDrawerBackdrop?.addEventListener("click", () => closeEditModal());
+els.songAddFileBtn?.addEventListener("click", () => els.songAddFileInput?.click());
+els.songAddFileInput?.addEventListener("change", async () => {
+  const file = els.songAddFileInput?.files?.[0];
+  if (els.songAddFileInput) els.songAddFileInput.value = "";
+  if (!file || !state.editingSongId) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await fetch(`/songs/${state.editingSongId}/files`, { method: "POST", body: fd });
+    if (!res.ok) {
+      const msg = await parseResponseError(res);
+      throw new Error(msg);
+    }
+    await res.json();
+    showToast("文件已添加", "success");
+    await openEditModal(state.editingSongId, state.editingCurrentFileId, { preserveMetadata: true });
+    await loadSongs().catch(() => {});
+  } catch (err) {
+    const reason = err && err.message ? err.message : String(err);
+    showToast(`添加文件失败：${reason}`, "error", reason.length > 120 ? 14000 : 9000);
+  }
 });
 els.scanBtn.addEventListener("click", () => {
   els.directoryPicker.click();
@@ -1491,6 +2350,9 @@ els.selectAllSongs?.addEventListener("change", () => {
   document.querySelectorAll('.song-checkbox').forEach(cb => cb.checked = checked);
   updateBatchButtons();
 });
+els.batchMergeDuplicatesBtn?.addEventListener("click", () => batchMergeDuplicateSongs());
+els.batchMergeSelectedBtn?.addEventListener("click", () => batchMergeSelectedSongs());
+els.relocateSelectedStorageBtn?.addEventListener("click", () => relocateSelectedSongStorage());
 els.batchDeleteBtn?.addEventListener("click", () => batchDeleteSongs());
 els.batchDownloadBtn?.addEventListener("click", () => batchDownloadSongs());
 els.directoryPicker.addEventListener("change", () => {
@@ -1584,6 +2446,11 @@ els.deleteOverlay?.addEventListener("click", (e) => {
   e.stopPropagation();
   if (e.target === els.deleteOverlay) closeDeleteModal(); 
 });
+els.skippedCloseBtn?.addEventListener("click", closeSkippedFilesModal);
+els.skippedDismissBtn?.addEventListener("click", closeSkippedFilesModal);
+els.skippedOverlay?.addEventListener("click", (e) => {
+  if (e.target === els.skippedOverlay) closeSkippedFilesModal();
+});
 els.modalCancelBtn.addEventListener("click", () => closeModal(null));
 els.modalConfirmBtn.addEventListener("click", () => closeModal(els.modalInputWrap.classList.contains("hidden") ? true : els.modalInput.value));
 els.modalOverlay.addEventListener("click", (event) => { 
@@ -1607,18 +2474,32 @@ document.addEventListener("click", () => {
   }
 });
 
+function preferredFormatForQueueItem(item) {
+  if (!item || item.id == null) return "";
+  return state.songFormatPreference[item.id] || "";
+}
+
 els.adminPrevBtn?.addEventListener("click", () => {
   const idx = adminPrevPlayIndex();
-  if (idx >= 0 && state.playQueue[idx]) playSongInAdmin(state.playQueue[idx].id).catch((err) => showToast(`播放失败: ${err.message || err}`, "error"));
+  if (idx >= 0 && state.playQueue[idx]) {
+    const item = state.playQueue[idx];
+    playSongInAdmin(item.id, preferredFormatForQueueItem(item), idx).catch((err) => showToast(`播放失败: ${err.message || err}`, "error"));
+  }
 });
 els.adminNextBtn?.addEventListener("click", () => {
   const idx = adminNextPlayIndex();
-  if (idx >= 0 && state.playQueue[idx]) playSongInAdmin(state.playQueue[idx].id).catch((err) => showToast(`播放失败: ${err.message || err}`, "error"));
+  if (idx >= 0 && state.playQueue[idx]) {
+    const item = state.playQueue[idx];
+    playSongInAdmin(item.id, preferredFormatForQueueItem(item), idx).catch((err) => showToast(`播放失败: ${err.message || err}`, "error"));
+  }
 });
 els.adminPlayModeSelect?.addEventListener("change", (event) => { state.playMode = event.target.value; });
 els.adminAudioPlayer?.addEventListener("ended", () => {
   const idx = adminNextPlayIndex();
-  if (idx >= 0 && state.playQueue[idx]) playSongInAdmin(state.playQueue[idx].id).catch(() => {});
+  if (idx >= 0 && state.playQueue[idx]) {
+    const item = state.playQueue[idx];
+    playSongInAdmin(item.id, preferredFormatForQueueItem(item), idx).catch(() => {});
+  }
 });
 
 Promise.all([loadTags(), loadLanguages(), loadGenres(), loadPeople(), loadFilterOptions(), loadSongs()]).catch((err) => {

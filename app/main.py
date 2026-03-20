@@ -1,6 +1,11 @@
 from pathlib import Path
+import io
+import shutil
 import tempfile
+import zipfile
+from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from botocore.exceptions import ClientError
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -9,12 +14,14 @@ from fastapi.responses import StreamingResponse
 from urllib.parse import quote
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, inspect, or_, select, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import Album, Artist, Genre, Language, Playlist, PlaylistItem, Song, SongChorusArtist, SongComposerArtist, SongFile, SongLeadArtist, SongLyricistArtist, SongTag, Tag
+from app.models import Album, Artist, Genre, Language, Playlist, PlaylistItem, Song, SongChorusArtist, SongComposerArtist, SongFile, SongGenre, SongLanguage, SongLeadArtist, SongLyricistArtist, SongTag, Tag
 from app.schemas import (
+    BatchSongDownloadIn,
     BulkSongMetadataUpdate,
     FilterOptionsOut,
     GenreCreate,
@@ -35,6 +42,9 @@ from app.schemas import (
     ScanProgress,
     SongDetailOut,
     SongFileOut,
+    SongFileRenameIn,
+    SongFileVariantOut,
+    SongMergeSelected,
     SongMetadataUpdate,
     SongOut,
     LanguageCreate,
@@ -44,8 +54,16 @@ from app.schemas import (
     TagOut,
     TagUpdate,
 )
-from app.services import choose_best_file, get_or_create_album, get_or_create_artist, scan_directory
+from app.services import (
+    attach_audio_file_to_song,
+    choose_best_file,
+    get_or_create_album,
+    get_or_create_artist,
+    relocate_song_files_storage,
+    scan_directory,
+)
 from app.services import SUPPORTED_EXTENSIONS, ingest_file
+from app.song_merge import merge_duplicate_songs, merge_slave_into_master
 from app.storage import S3Storage
 
 settings = get_settings()
@@ -61,6 +79,7 @@ scan_progress = {
     "added_count": 0,
     "skipped_count": 0,
     "start_time": None,
+    "skipped_details": [],
 }
 
 
@@ -86,16 +105,77 @@ def encode_artist_types(types: list[str]) -> str:
     return ",".join(unique)
 
 
+def get_song_language_ids(db: Session, song_id: int) -> list[int]:
+    rows = db.execute(
+        select(SongLanguage.language_id)
+        .join(Language, SongLanguage.language_id == Language.id)
+        .where(SongLanguage.song_id == song_id)
+        .order_by(Language.name.asc())
+    ).all()
+    ids = [row[0] for row in rows]
+    if ids:
+        return ids
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if song and song.language_id:
+        return [song.language_id]
+    return []
+
+
 def get_song_language_name(db: Session, song: Song) -> Optional[str]:
-    if not song.language_id:
+    lids = get_song_language_ids(db, song.id)
+    if not lids:
         return None
-    return db.scalar(select(Language.name).where(Language.id == song.language_id))
+    names = db.scalars(select(Language.name).where(Language.id.in_(lids)).order_by(Language.name.asc())).all()
+    return ", ".join(names) if names else None
+
+
+def set_song_languages(db: Session, song_id: int, language_ids: list[int]) -> None:
+    db.query(SongLanguage).filter(SongLanguage.song_id == song_id).delete()
+    seen: list[int] = []
+    for lid in language_ids:
+        if lid and lid not in seen:
+            seen.append(lid)
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    for lid in seen:
+        if db.scalar(select(Language).where(Language.id == lid)):
+            db.add(SongLanguage(song_id=song_id, language_id=lid))
+    if song:
+        song.language_id = seen[0] if seen else None
+
+
+def get_song_genre_ids(db: Session, song_id: int) -> list[int]:
+    rows = db.execute(
+        select(SongGenre.genre_id).join(Genre, SongGenre.genre_id == Genre.id).where(SongGenre.song_id == song_id).order_by(Genre.name.asc())
+    ).all()
+    ids = [row[0] for row in rows]
+    if ids:
+        return ids
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if song and song.genre_id:
+        return [song.genre_id]
+    return []
 
 
 def get_song_genre_name(db: Session, song: Song) -> Optional[str]:
-    if not song.genre_id:
+    gids = get_song_genre_ids(db, song.id)
+    if not gids:
         return None
-    return db.scalar(select(Genre.name).where(Genre.id == song.genre_id))
+    names = db.scalars(select(Genre.name).where(Genre.id.in_(gids)).order_by(Genre.name.asc())).all()
+    return ", ".join(names) if names else None
+
+
+def set_song_genres(db: Session, song_id: int, genre_ids: list[int]) -> None:
+    db.query(SongGenre).filter(SongGenre.song_id == song_id).delete()
+    seen: list[int] = []
+    for gid in genre_ids:
+        if gid and gid not in seen:
+            seen.append(gid)
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    for gid in seen:
+        if db.scalar(select(Genre).where(Genre.id == gid)):
+            db.add(SongGenre(song_id=song_id, genre_id=gid))
+    if song:
+        song.genre_id = seen[0] if seen else None
 
 
 def get_song_lead_artist_names(db: Session, song: Song) -> list[str]:
@@ -151,6 +231,151 @@ def get_song_chorus_artist_name(db: Session, song: Song) -> Optional[str]:
     return " / ".join(names) if names else None
 
 
+def normalize_audio_format(fmt: Optional[str]) -> str:
+    if not fmt:
+        return ""
+    return str(fmt).strip().lower().lstrip(".")
+
+
+_CN_SH = ZoneInfo("Asia/Shanghai")
+
+
+def download_zip_timestamp_tag() -> str:
+    """
+    ZIP 文件名用时间戳（Asia/Shanghai）：yyyyMMddHHmmss + 五位亚秒（微秒 // 10，00000–99999），
+    对应书写习惯 yyyymmddhhMMsssss。
+    """
+    now = datetime.now(_CN_SH)
+    return now.strftime("%Y%m%d%H%M%S") + f"{now.microsecond // 10:05d}"
+
+
+def safe_download_segment(text: Optional[str], fallback: str = "unknown") -> str:
+    if not text or not str(text).strip():
+        text = fallback
+    bad = '\\/:*?"<>|\n\r\t'
+    out = "".join("_" if c in bad else c for c in str(text))
+    out = out.strip(" .")
+    return out or fallback
+
+
+def build_song_file_download_basename(db: Session, song: Song, song_file: SongFile) -> tuple[str, str]:
+    title = safe_download_segment(song.title, "untitled")
+    lead_raw = get_song_lead_artist_name(db, song) or get_song_artist_text(db, song)
+    lead = safe_download_segment(lead_raw, "unknown")
+    ext = normalize_audio_format(song_file.format) or "bin"
+    stem = f"{title}-{lead}"
+    return stem, ext
+
+
+def build_song_file_download_filename(db: Session, song: Song, song_file: SongFile) -> str:
+    stem, ext = build_song_file_download_basename(db, song, song_file)
+    return f"{stem}.{ext}"
+
+
+def assign_unique_archive_names(db: Session, files: list[SongFile]) -> list[tuple[SongFile, str]]:
+    if not files:
+        return []
+    song_ids = {f.song_id for f in files}
+    songs = {s.id: s for s in db.scalars(select(Song).where(Song.id.in_(song_ids))).all()}
+    seen: set[str] = set()
+    out: list[tuple[SongFile, str]] = []
+    for sf in sorted(files, key=lambda x: (x.song_id, normalize_audio_format(x.format), x.id)):
+        song = songs.get(sf.song_id)
+        if not song:
+            arc = f"missing_{sf.id}.bin"
+            if arc in seen:
+                arc = f"missing_{sf.id}_{sf.song_id}.bin"
+            seen.add(arc)
+            out.append((sf, arc))
+            continue
+        name = build_song_file_download_filename(db, song, sf)
+        if name in seen:
+            stem, ext = build_song_file_download_basename(db, song, sf)
+            name = f"{stem}_{sf.id}.{ext}"
+        seen.add(name)
+        out.append((sf, name))
+    return out
+
+
+def streaming_download_song_file(db: Session, song_file: SongFile) -> StreamingResponse:
+    song = db.scalar(select(Song).where(Song.id == song_file.song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    try:
+        s3_object = storage.get_object(song_file.object_key)
+    except ClientError as exc:
+        raise HTTPException(status_code=404, detail="Audio object not found") from exc
+    download_name = build_song_file_download_filename(db, song, song_file)
+    filename_star = quote(download_name)
+    media = song_file.mime_type or "application/octet-stream"
+    headers = {
+        "Content-Type": media,
+        "Content-Length": str(s3_object.get("ContentLength", song_file.file_size)),
+        "Content-Disposition": f"attachment; filename*=UTF-8''{filename_star}",
+    }
+    return StreamingResponse(s3_object["Body"].iter_chunks(), media_type=media, headers=headers)
+
+
+def zip_song_files_response(db: Session, files: list[SongFile], zip_download_name: str) -> StreamingResponse:
+    pairs = assign_unique_archive_names(db, files)
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        for sf, arcname in pairs:
+            try:
+                s3_object = storage.get_object(sf.object_key)
+                content = b"".join(s3_object["Body"].iter_chunks())
+                zf.writestr(arcname, content)
+            except Exception as e:
+                print(f"Error adding file {sf.id} to zip: {e}")
+                continue
+    memory_file.seek(0)
+    zname = quote(zip_download_name)
+    headers = {
+        "Content-Type": "application/zip",
+        "Content-Disposition": f"attachment; filename*=UTF-8''{zname}",
+    }
+    return StreamingResponse(memory_file, media_type="application/zip", headers=headers)
+
+
+def resolve_song_files_for_download(db: Session, song_id: int, formats_param: list[str]) -> list[SongFile]:
+    files_all = list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all())
+    if not files_all:
+        return []
+    if not formats_param:
+        best = choose_best_file(files_all)
+        return [best] if best else []
+    want = {normalize_audio_format(f) for f in formats_param if normalize_audio_format(f)}
+    if not want:
+        best = choose_best_file(files_all)
+        return [best] if best else []
+    chosen: list[SongFile] = []
+    for fmt in sorted(want):
+        match = next((x for x in files_all if normalize_audio_format(x.format) == fmt), None)
+        if match:
+            chosen.append(match)
+    seen_ids: set[int] = set()
+    unique: list[SongFile] = []
+    for f in chosen:
+        if f.id not in seen_ids:
+            seen_ids.add(f.id)
+            unique.append(f)
+    return unique
+
+
+def collect_batch_song_files(db: Session, song_ids: list[int], formats: list[str]) -> list[SongFile]:
+    want = {normalize_audio_format(f) for f in formats if normalize_audio_format(f)}
+    if not want:
+        return []
+    result: list[SongFile] = []
+    for sid in song_ids:
+        files_all = list(db.scalars(select(SongFile).where(SongFile.song_id == sid)).all())
+        for fmt in sorted(want):
+            match = next((x for x in files_all if normalize_audio_format(x.format) == fmt), None)
+            if match:
+                result.append(match)
+    return result
+
+
 def set_song_artists(db: Session, song_id: int, lead_artist_ids: list[int], chorus_artist_ids: list[int]) -> None:
     db.query(SongLeadArtist).filter(SongLeadArtist.song_id == song_id).delete()
     db.query(SongChorusArtist).filter(SongChorusArtist.song_id == song_id).delete()
@@ -187,6 +412,13 @@ def set_song_tags(db: Session, song_id: int, tag_ids: list[int]) -> None:
         db.add(SongTag(song_id=song_id, tag_id=tag.id))
 
 
+def song_file_variants_out(files: list[SongFile]) -> list[SongFileVariantOut]:
+    return [
+        SongFileVariantOut(file_id=f.id, format=f.format or "")
+        for f in sorted(files, key=lambda x: (x.format or "").lower())
+    ]
+
+
 def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_name: Optional[str], formats: list[str]) -> SongOut:
     files = list(db.scalars(select(SongFile).where(SongFile.song_id == song.id)).all())
     best_file = choose_best_file(files) if files else None
@@ -203,16 +435,156 @@ def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_na
         album=album_name,
         duration_ms=song.duration_ms,
         formats=formats,
+        file_variants=song_file_variants_out(files) if files else [],
         tags=get_song_tag_names(db, song.id),
+        file_id=best_file.id if best_file else None,
         file_format=best_file.format if best_file else None,
         file_size=best_file.file_size if best_file else None,
         bitrate=best_file.bitrate if best_file else None,
         sample_rate=best_file.sample_rate if best_file else None,
         created_at=best_file.created_at if best_file else song.created_at,
+        updated_at=song.updated_at,
         language=get_song_language_name(db, song),
-                genre=get_song_genre_name(db, song),
+        genre=get_song_genre_name(db, song),
         release_date=song.release_date,
     )
+
+
+def build_song_out_for_file(
+    db: Session,
+    song: Song,
+    file: SongFile,
+    artist_name: Optional[str],
+    album_name: Optional[str],
+    song_formats: list[str],
+    tag_names: list[str],
+    all_files: Optional[list[SongFile]] = None,
+) -> SongOut:
+    variants_source = all_files if all_files is not None else [file]
+    return SongOut(
+        id=song.id,
+        title=song.title,
+        artist=artist_name or get_song_artist_text(db, song),
+        lead_artist=get_song_lead_artist_name(db, song),
+        chorus_artist=get_song_chorus_artist_name(db, song),
+        lead_artists=get_song_lead_artist_names(db, song),
+        chorus_artists=get_song_chorus_artist_names(db, song),
+        lyricists=get_song_role_artist_names(db, song, SongLyricistArtist),
+        composers=get_song_role_artist_names(db, song, SongComposerArtist),
+        album=album_name,
+        duration_ms=song.duration_ms,
+        formats=song_formats,
+        file_variants=song_file_variants_out(variants_source) if variants_source else [],
+        tags=tag_names,
+        file_id=file.id,
+        file_format=file.format,
+        file_size=file.file_size,
+        bitrate=file.bitrate,
+        sample_rate=file.sample_rate,
+        created_at=file.created_at,
+        updated_at=song.updated_at,
+        language=get_song_language_name(db, song),
+        genre=get_song_genre_name(db, song),
+        release_date=song.release_date or "",
+    )
+
+
+_SONG_FILES_COLS_ORDER = [
+    "id",
+    "song_id",
+    "object_key",
+    "original_filename",
+    "format",
+    "mime_type",
+    "bitrate",
+    "sample_rate",
+    "bit_depth",
+    "channels",
+    "file_size",
+    "sha256",
+    "is_lossless",
+    "is_playable_web",
+    "created_at",
+]
+
+
+def _sqlite_song_files_has_unique_on_hash_size(connection) -> bool:
+    """是否存在 (sha256, file_size) 上的唯一索引（含 sqlite_autoindex_*，SQLite 禁止对其 DROP INDEX）。"""
+    rows = connection.execute(text("PRAGMA index_list('song_files')")).fetchall()
+    for row in rows:
+        if len(row) < 3:
+            continue
+        unique = int(row[2] or 0)
+        if not unique:
+            continue
+        idx_name = row[1]
+        if not idx_name:
+            continue
+        info = connection.execute(text(f'PRAGMA index_info("{idx_name}")')).fetchall()
+        col_names = sorted(str(c[2]) for c in info if c[2] is not None)
+        if col_names == ["file_size", "sha256"]:
+            return True
+    return False
+
+
+def _sqlite_rebuild_song_files_without_hash_unique(connection) -> None:
+    """表重建：去掉 (sha256, file_size) 唯一约束，保留 PRIMARY KEY、UNIQUE(object_key) 及全部数据。"""
+    insp = inspect(connection)
+    if "song_files" not in insp.get_table_names():
+        return
+    present = {c["name"] for c in insp.get_columns("song_files")}
+    missing = [n for n in _SONG_FILES_COLS_ORDER if n not in present]
+    if missing:
+        raise RuntimeError(
+            f"song_files 缺少列 {missing}，无法自动迁移；请手动调整库结构或从备份恢复。"
+        )
+    qcols = ", ".join(f'"{n}"' for n in _SONG_FILES_COLS_ORDER)
+    connection.execute(
+        text(
+            """
+            CREATE TABLE song_files__m (
+                id INTEGER NOT NULL,
+                song_id INTEGER NOT NULL,
+                object_key VARCHAR(1024) NOT NULL,
+                original_filename VARCHAR(512) NOT NULL,
+                format VARCHAR(32) NOT NULL,
+                mime_type VARCHAR(64),
+                bitrate INTEGER,
+                sample_rate INTEGER,
+                bit_depth INTEGER,
+                channels INTEGER,
+                file_size INTEGER NOT NULL,
+                sha256 VARCHAR(64) NOT NULL,
+                is_lossless BOOLEAN NOT NULL DEFAULT 0,
+                is_playable_web BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME,
+                PRIMARY KEY (id),
+                FOREIGN KEY (song_id) REFERENCES songs (id),
+                UNIQUE (object_key)
+            )
+            """
+        )
+    )
+    connection.execute(text(f"INSERT INTO song_files__m ({qcols}) SELECT {qcols} FROM song_files"))
+    connection.execute(text("DROP TABLE song_files"))
+    connection.execute(text("ALTER TABLE song_files__m RENAME TO song_files"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_song_files_song_id ON song_files (song_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_song_files_format ON song_files (format)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_song_files_sha256 ON song_files (sha256)"))
+
+
+def _migrate_drop_song_file_hash_unique(connection) -> None:
+    """移除 song_files 上 (sha256, file_size) 全局唯一约束，使合并后可保留多条相同内容记录（不同 object_key）。"""
+    dialect = connection.dialect.name
+    if dialect == "sqlite":
+        # 命名唯一索引可直接删；表内 UNIQUE 会生成 sqlite_autoindex_*，SQLite 不允许 DROP，只能重建表
+        connection.execute(text('DROP INDEX IF EXISTS "uq_song_file_hash_size"'))
+        if _sqlite_song_files_has_unique_on_hash_size(connection):
+            _sqlite_rebuild_song_files_without_hash_unique(connection)
+    elif dialect in ("postgresql", "postgres"):
+        connection.execute(text("ALTER TABLE song_files DROP CONSTRAINT IF EXISTS uq_song_file_hash_size"))
+    elif dialect == "mysql":
+        connection.execute(text("ALTER TABLE song_files DROP INDEX uq_song_file_hash_size"))
 
 
 def ensure_schema() -> None:
@@ -222,6 +594,10 @@ def ensure_schema() -> None:
             Language.__table__.create(bind=connection, checkfirst=True)
         if "genres" not in inspector.get_table_names():
             Genre.__table__.create(bind=connection, checkfirst=True)
+        if "song_genres" not in inspector.get_table_names():
+            SongGenre.__table__.create(bind=connection, checkfirst=True)
+        if "song_languages" not in inspector.get_table_names():
+            SongLanguage.__table__.create(bind=connection, checkfirst=True)
         if "song_lead_artists" not in inspector.get_table_names():
             SongLeadArtist.__table__.create(bind=connection, checkfirst=True)
         if "song_chorus_artists" not in inspector.get_table_names():
@@ -245,9 +621,52 @@ def ensure_schema() -> None:
         playlist_columns = {col["name"] for col in inspect(engine).get_columns("playlists")}
         if "sort_order" not in playlist_columns:
             connection.execute(text("ALTER TABLE playlists ADD COLUMN sort_order INTEGER DEFAULT 0"))
+        if "song_genres" in inspect(engine).get_table_names():
+            connection.execute(
+                text(
+                    "INSERT OR IGNORE INTO song_genres (song_id, genre_id) SELECT id, genre_id FROM songs WHERE genre_id IS NOT NULL"
+                )
+            )
+        if "song_languages" in inspect(engine).get_table_names():
+            connection.execute(
+                text(
+                    "INSERT OR IGNORE INTO song_languages (song_id, language_id) SELECT id, language_id FROM songs WHERE language_id IS NOT NULL"
+                )
+            )
+
+        if "song_files" in inspector.get_table_names():
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS _schema_migrations (name VARCHAR(128) PRIMARY KEY)")
+            )
+            done = connection.execute(
+                text("SELECT 1 FROM _schema_migrations WHERE name = 'song_file_drop_global_hash_unique_v1'")
+            ).first()
+            if not done:
+                _migrate_drop_song_file_hash_unique(connection)
+                connection.execute(
+                    text(
+                        "INSERT INTO _schema_migrations (name) VALUES ('song_file_drop_global_hash_unique_v1')"
+                    )
+                )
 
     db = next(get_db())
     try:
+        db.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS _schema_migrations (name VARCHAR(128) PRIMARY KEY)"
+            )
+        )
+        ran_merge = db.scalar(
+            text("SELECT 1 FROM _schema_migrations WHERE name = 'merge_duplicate_songs_v1'")
+        )
+        if not ran_merge:
+            merge_duplicate_songs(db)
+            db.execute(
+                text(
+                    "INSERT INTO _schema_migrations (name) VALUES ('merge_duplicate_songs_v1')"
+                )
+            )
+
         default_language = get_default_language(db)
         db.execute(text("UPDATE songs SET language_id = :language_id WHERE language_id IS NULL"), {"language_id": default_language.id})
         db.execute(text("UPDATE artists SET types = '歌手' WHERE types IS NULL OR types = ''"))
@@ -268,9 +687,20 @@ def ensure_schema() -> None:
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
-    ensure_schema()
-    storage.ensure_buckets()
+    try:
+        Base.metadata.create_all(bind=engine)
+        ensure_schema()
+        storage.ensure_buckets()
+    except OperationalError as e:
+        orig = getattr(e, "orig", None)
+        msg = str(orig) if orig is not None else str(e)
+        if "unable to open database file" in msg.lower() and settings.database_url.startswith("sqlite"):
+            raise RuntimeError(
+                "SQLite 无法打开或创建数据库文件。若 DATABASE_URL=sqlite:////data/music.db，"
+                "在宿主机直接运行（未用 Docker）时通常没有可写的 /data；请改为 "
+                "DATABASE_URL=sqlite:///./data/music.db，或在项目下创建 ./data 后使用上述相对路径。"
+            ) from e
+        raise
 
 
 @app.get("/health")
@@ -310,6 +740,7 @@ def reset_scan_progress():
         "added_count": 0,
         "skipped_count": 0,
         "start_time": None,
+        "skipped_details": [],
     }
     return {"status": "reset"}
 
@@ -330,15 +761,16 @@ def trigger_scan(payload: ScanRequest, db: Session = Depends(get_db)):
         "added_count": 0,
         "skipped_count": 0,
         "start_time": __import__("time").time(),
+        "skipped_details": [],
     }
-    
+
     job = scan_directory(db=db, storage=storage, root=target, progress=scan_progress)
-    
+
     scan_progress["is_scanning"] = False
     scan_progress["scanned_count"] = job.scanned_count
     scan_progress["added_count"] = job.added_count
     scan_progress["skipped_count"] = job.skipped_count
-    
+
     return ScanResult(
         scan_job_id=job.id,
         status=job.status,
@@ -347,6 +779,7 @@ def trigger_scan(payload: ScanRequest, db: Session = Depends(get_db)):
         skipped_count=job.skipped_count,
         total_count=len(files),
         start_time=scan_progress["start_time"],
+        skipped_details=scan_progress.get("skipped_details") or [],
     )
 
 
@@ -366,6 +799,7 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
         "added_count": 0,
         "skipped_count": 0,
         "start_time": __import__("time").time(),
+        "skipped_details": [],
     }
     
     scanned_count = 0
@@ -385,13 +819,18 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
             tmp.write(content)
             tmp_path = Path(tmp.name)
 
+        display_name = upload.filename or tmp_path.name
         try:
-            if ingest_file(db, storage, tmp_path):
+            ok, skip_reason = ingest_file(db, storage, tmp_path)
+            if ok:
                 added_count += 1
                 scan_progress["added_count"] = added_count
             else:
                 skipped_count += 1
                 scan_progress["skipped_count"] = skipped_count
+                scan_progress.setdefault("skipped_details", []).append(
+                    {"path": display_name, "reason": skip_reason or "未知原因"}
+                )
         finally:
             tmp_path.unlink(missing_ok=True)
         
@@ -407,6 +846,7 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
         skipped_count=skipped_count,
         total_count=len(supported_files),
         start_time=scan_progress["start_time"],
+        skipped_details=scan_progress.get("skipped_details") or [],
     )
 
 
@@ -441,14 +881,18 @@ def list_songs(
     if languages:
         language_ids = [lang.id for lang in db.scalars(select(Language).where(Language.name.in_(languages))).all()]
         if language_ids:
-            query = query.where(Song.language_id.in_(language_ids))
+            sl_songs = select(SongLanguage.song_id).where(SongLanguage.language_id.in_(language_ids))
+            query = query.where(or_(Song.language_id.in_(language_ids), Song.id.in_(sl_songs)))
         else:
             return []
     if genre_ids:
-        query = query.where(Song.genre_id.in_(genre_ids))
+        sg_songs = select(SongGenre.song_id).where(SongGenre.genre_id.in_(genre_ids))
+        query = query.where(or_(Song.genre_id.in_(genre_ids), Song.id.in_(sg_songs)))
 
     rows = db.execute(query).all()
     result: list[SongOut] = []
+    tag_name_map = {tag.id: tag.name for tag in db.scalars(select(Tag).where(Tag.id.in_(tag_ids))).all()} if tag_ids else {}
+
     for song, artist_name, album_name in rows:
         files = list(db.scalars(select(SongFile).where(SongFile.song_id == song.id)).all())
         if not files:
@@ -456,28 +900,18 @@ def list_songs(
 
         song_formats = sorted({f.format.lower() for f in files})
         tag_names = get_song_tag_names(db, song.id)
-        tag_name_map = {tag.id: tag.name for tag in db.scalars(select(Tag).where(Tag.id.in_(tag_ids))).all()} if tag_ids else {}
-        best_file = choose_best_file(files)
         lead_artist_name = get_song_lead_artist_name(db, song)
         chorus_artist_name = get_song_chorus_artist_name(db, song)
         lead_names = get_song_lead_artist_names(db, song)
         chorus_names = get_song_chorus_artist_names(db, song)
         lyricist_names = get_song_role_artist_names(db, song, SongLyricistArtist)
         composer_names = get_song_role_artist_names(db, song, SongComposerArtist)
+
         if keyword:
             kw = keyword.lower()
             values = [song.title or "", lead_artist_name or "", chorus_artist_name or "", album_name or "", " / ".join(lyricist_names), " / ".join(composer_names)]
             if not any(kw in value.lower() for value in values):
                 continue
-
-        if format and format.lower() not in song_formats:
-            continue
-        if formats and not any(fmt.lower() in song_formats for fmt in formats):
-            continue
-        if bitrates and (best_file.bitrate not in bitrates):
-            continue
-        if sample_rates and (best_file.sample_rate not in sample_rates):
-            continue
         if tag_ids and not set(tag_name_map.values()).issubset(set(tag_names)):
             continue
         if lead_artists and not any(name in lead_names for name in lead_artists):
@@ -489,29 +923,22 @@ def list_songs(
         if composers and not any(name in composer_names for name in composers):
             continue
 
+        candidate_files = list(files)
+        if format:
+            candidate_files = [f for f in candidate_files if f.format and f.format.lower() == format.lower()]
+        if formats:
+            fmts_lower = [x.lower() for x in formats]
+            candidate_files = [f for f in candidate_files if f.format and f.format.lower() in fmts_lower]
+        if bitrates:
+            candidate_files = [f for f in candidate_files if f.bitrate is not None and f.bitrate in bitrates]
+        if sample_rates:
+            candidate_files = [f for f in candidate_files if f.sample_rate is not None and f.sample_rate in sample_rates]
+        if not candidate_files:
+            continue
+        best_file = choose_best_file(candidate_files)
         result.append(
-            SongOut(
-                id=song.id,
-                title=song.title,
-                artist=get_song_artist_text(db, song),
-                lead_artist=lead_artist_name,
-                chorus_artist=chorus_artist_name,
-                lead_artists=lead_names,
-                chorus_artists=chorus_names,
-                lyricists=lyricist_names,
-                composers=composer_names,
-                album=album_name,
-                duration_ms=song.duration_ms,
-                formats=song_formats,
-                tags=tag_names,
-                file_format=best_file.format,
-                file_size=best_file.file_size,
-                bitrate=best_file.bitrate,
-                sample_rate=best_file.sample_rate,
-                created_at=best_file.created_at,
-                language=get_song_language_name(db, song),
-                genre=get_song_genre_name(db, song),
-                release_date=song.release_date or "",
+            build_song_out_for_file(
+                db, song, best_file, artist_name, album_name, song_formats, tag_names, all_files=files
             )
         )
 
@@ -531,6 +958,7 @@ def list_songs(
             "bitrate": item.bitrate or 0,
             "sample_rate": item.sample_rate or 0,
             "created_at": item.created_at.isoformat() if item.created_at else "",
+            "updated_at": item.updated_at.isoformat() if item.updated_at else "",
             "release_date": item.release_date or "",
             "tags": tag_text,
             "language": item.language or "",
@@ -733,12 +1161,14 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         files=[SongFileOut.model_validate(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
+        language_ids=get_song_language_ids(db, song.id),
         genre=get_song_genre_name(db, song),
         lead_artist_ids=get_song_lead_artist_ids(db, song),
         chorus_artist_ids=get_song_chorus_artist_ids(db, song),
         lyricist_ids=get_song_role_artist_ids(db, song, SongLyricistArtist),
         composer_ids=get_song_role_artist_ids(db, song, SongComposerArtist),
         genre_id=song.genre_id,
+        genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
     )
 
@@ -792,24 +1222,38 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
     if payload.tag_ids is not None:
         set_song_tags(db, song.id, payload.tag_ids)
 
-    if payload.language_id is not None:
+    if payload.language_ids is not None:
+        unique_lang = [x for x in payload.language_ids if x]
+        for lid in unique_lang:
+            if not db.scalar(select(Language).where(Language.id == lid)):
+                raise HTTPException(status_code=404, detail=f"Language {lid} not found")
+        set_song_languages(db, song.id, unique_lang)
+    elif payload.language_id is not None:
         language = db.scalar(select(Language).where(Language.id == payload.language_id))
         if not language:
             raise HTTPException(status_code=404, detail="Language not found")
-        song.language_id = language.id
+        set_song_languages(db, song.id, [language.id])
 
-    if payload.genre_id is not None:
+    if payload.genre_ids is not None:
+        unique = [g for g in payload.genre_ids if g]
+        for gid in unique:
+            if not db.scalar(select(Genre).where(Genre.id == gid)):
+                raise HTTPException(status_code=404, detail=f"Genre {gid} not found")
+        set_song_genres(db, song.id, unique)
+    elif payload.genre_id is not None:
         if payload.genre_id == 0:
-            song.genre_id = None
+            set_song_genres(db, song.id, [])
         else:
             genre = db.scalar(select(Genre).where(Genre.id == payload.genre_id))
             if not genre:
                 raise HTTPException(status_code=404, detail="Genre not found")
-            song.genre_id = genre.id
+            set_song_genres(db, song.id, [genre.id])
 
     if payload.release_date is not None:
         song.release_date = payload.release_date.strip() or None
 
+    db.flush()
+    relocate_song_files_storage(db, storage, song)
     db.commit()
     db.refresh(song)
 
@@ -831,11 +1275,14 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         files=[SongFileOut.model_validate(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
-                genre=get_song_genre_name(db, song),
+        language_ids=get_song_language_ids(db, song.id),
+        genre=get_song_genre_name(db, song),
         lead_artist_ids=get_song_lead_artist_ids(db, song),
         chorus_artist_ids=get_song_chorus_artist_ids(db, song),
         lyricist_ids=get_song_role_artist_ids(db, song, SongLyricistArtist),
         composer_ids=get_song_role_artist_ids(db, song, SongComposerArtist),
+        genre_id=song.genre_id,
+        genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
     )
 
@@ -847,6 +1294,8 @@ def delete_song(song_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Song not found")
     db.query(PlaylistItem).filter(PlaylistItem.song_id == song_id).delete()
     db.query(SongTag).filter(SongTag.song_id == song_id).delete()
+    db.query(SongGenre).filter(SongGenre.song_id == song_id).delete()
+    db.query(SongLanguage).filter(SongLanguage.song_id == song_id).delete()
     db.query(SongFile).filter(SongFile.song_id == song_id).delete()
     db.delete(song)
     db.commit()
@@ -882,6 +1331,9 @@ def bulk_update_songs(payload: BulkSongMetadataUpdate, db: Session = Depends(get
         if payload.tag_ids is not None:
             set_song_tags(db, song.id, payload.tag_ids)
 
+    db.flush()
+    for song in songs:
+        relocate_song_files_storage(db, storage, song)
     db.commit()
 
     result = []
@@ -1014,6 +1466,7 @@ def delete_language(language_id: int, db: Session = Depends(get_db)):
         if not replacement:
             raise HTTPException(status_code=400, detail="Cannot delete the only language")
         replacement_id = replacement.id
+    db.execute(text("DELETE FROM song_languages WHERE language_id = :language_id"), {"language_id": language_id})
     db.execute(text("UPDATE songs SET language_id = :replacement_id WHERE language_id = :language_id"), {"replacement_id": replacement_id, "language_id": language_id})
     db.delete(language)
     db.commit()
@@ -1067,6 +1520,7 @@ def delete_genre(genre_id: int, db: Session = Depends(get_db)):
     genre = db.scalar(select(Genre).where(Genre.id == genre_id))
     if not genre:
         raise HTTPException(status_code=404, detail="Genre not found")
+    db.execute(text("DELETE FROM song_genres WHERE genre_id = :genre_id"), {"genre_id": genre_id})
     db.execute(text("UPDATE songs SET genre_id = NULL WHERE genre_id = :genre_id"), {"genre_id": genre_id})
     db.delete(genre)
     db.commit()
@@ -1117,7 +1571,12 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/songs/{song_id}/play", response_model=PlayResponse)
-def get_song_play(song_id: int, preferred_format: Optional[str] = None, db: Session = Depends(get_db)):
+def get_song_play(
+    song_id: int,
+    preferred_format: Optional[str] = None,
+    file_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     song = db.scalar(select(Song).where(Song.id == song_id))
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
@@ -1127,8 +1586,10 @@ def get_song_play(song_id: int, preferred_format: Optional[str] = None, db: Sess
         raise HTTPException(status_code=404, detail="No file version for this song")
 
     selected = None
-    if preferred_format:
-        selected = next((f for f in files if f.format.lower() == preferred_format.lower()), None)
+    if file_id:
+        selected = next((f for f in files if f.id == file_id), None)
+    if not selected and preferred_format:
+        selected = next((f for f in files if f.format and f.format.lower() == preferred_format.lower()), None)
     if not selected:
         selected = choose_best_file(files)
 
@@ -1137,8 +1598,33 @@ def get_song_play(song_id: int, preferred_format: Optional[str] = None, db: Sess
         selected_song_file_id=selected.id,
         selected_format=selected.format,
         stream_url=f"/song-files/{selected.id}/stream",
-        download_url=f"/song-files/{selected.id}/download",
+        download_url=f"/songs/{song_id}/download",
     )
+
+
+@app.get("/songs/{song_id}/download")
+def download_song_bundle(
+    song_id: int,
+    formats: list[str] = Query(default=[]),
+    db: Session = Depends(get_db),
+):
+    """
+    下载歌曲音频。未指定 formats 时使用服务端推荐的一条；指定多种格式时，每格式一条（若存在），
+    多于一个文件时打包为 ZIP。包内文件名：{歌名}-{原唱}.{格式}；ZIP 名：{歌名}-{原唱}-{yyyyMMddHHmmss + 五位亚秒}.zip。
+    """
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    chosen = resolve_song_files_for_download(db, song_id, formats)
+    if not chosen:
+        raise HTTPException(status_code=404, detail="没有可下载的音频文件（请检查所选格式是否存在）")
+    if len(chosen) == 1:
+        return streaming_download_song_file(db, chosen[0])
+    title_seg = safe_download_segment(song.title, "untitled")
+    lead_raw = get_song_lead_artist_name(db, song) or get_song_artist_text(db, song)
+    lead_seg = safe_download_segment(lead_raw, "unknown")
+    zip_name = f"{title_seg}-{lead_seg}-{download_zip_timestamp_tag()}.zip"
+    return zip_song_files_response(db, chosen, zip_name)
 
 
 @app.get("/song-files/{song_file_id}/stream")
@@ -1173,48 +1659,188 @@ def download_song_file(song_file_id: int, db: Session = Depends(get_db)):
     song_file = db.scalar(select(SongFile).where(SongFile.id == song_file_id))
     if not song_file:
         raise HTTPException(status_code=404, detail="Song file not found")
+    return streaming_download_song_file(db, song_file)
+
+
+@app.patch("/song-files/{song_file_id}", response_model=SongFileOut)
+def patch_song_file(song_file_id: int, body: SongFileRenameIn, db: Session = Depends(get_db)):
+    """更新展示用原始文件名；扩展名不可改。保存后按当前规则调整对象存储路径（music/原唱/歌名/文件名.格式）。"""
+    song_file = db.scalar(select(SongFile).where(SongFile.id == song_file_id))
+    if not song_file:
+        raise HTTPException(status_code=404, detail="Song file not found")
+    fmt = (song_file.format or "").strip().lower().lstrip(".")
+    if not fmt:
+        raise HTTPException(status_code=400, detail="文件记录缺少格式信息，无法重命名")
+    name = body.original_filename.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    if "/" in name or "\\" in name or name in (".", ".."):
+        raise HTTPException(status_code=400, detail="文件名不能包含路径分隔符")
+    suffix = Path(name).suffix.lower()
+    if suffix != f".{fmt}":
+        raise HTTPException(
+            status_code=400,
+            detail=f"扩展名必须为 .{fmt}，不允许修改音频格式",
+        )
+    if not Path(name).stem.strip():
+        raise HTTPException(status_code=400, detail="主文件名不能为空")
+    song_file.original_filename = name[:512]
+    song = db.scalar(select(Song).where(Song.id == song_file.song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    db.flush()
+    relocate_song_files_storage(db, storage, song)
+    db.commit()
+    db.refresh(song_file)
+    return SongFileOut.model_validate(song_file)
+
+
+@app.post("/songs/{song_id}/files", response_model=SongFileOut)
+async def add_song_file_to_song(
+    song_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """向已有歌曲上传并关联一条新音频（对象存储 + song_files）。"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="未选择文件")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的格式，支持: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp.flush()
+        tmp_path = Path(tmp.name)
     try:
-        s3_object = storage.get_object(song_file.object_key)
-    except ClientError as exc:
-        raise HTTPException(status_code=404, detail="Audio object not found") from exc
+        try:
+            song_file = attach_audio_file_to_song(
+                db, storage, song_id, tmp_path, original_filename=file.filename
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"添加文件失败：{exc}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
-    filename = quote(song_file.original_filename)
-    headers = {
-        "Content-Type": song_file.mime_type or "application/octet-stream",
-        "Content-Length": str(s3_object.get("ContentLength", song_file.file_size)),
-        "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
-    }
-    return StreamingResponse(s3_object["Body"].iter_chunks(), media_type=song_file.mime_type, headers=headers)
+    return SongFileOut.model_validate(song_file)
 
 
-@app.get("/admin/songs/batch-download")
-def batch_download_songs(song_ids: str = Query(...), db: Session = Depends(get_db)):
-    import io
-    import zipfile
-    
-    ids = [int(x.strip()) for x in song_ids.split(",") if x.strip().isdigit()]
-    if not ids:
-        raise HTTPException(status_code=400, detail="No valid song IDs provided")
-    
-    song_files = db.scalars(select(SongFile).where(SongFile.song_id.in_(ids))).all()
-    if not song_files:
-        raise HTTPException(status_code=404, detail="No song files found")
-    
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
-        for sf in song_files:
-            try:
-                s3_object = storage.get_object(sf.object_key)
-                content = b"".join(list(s3_object["Body"].iter_chunks()))
-                safe_name = sf.original_filename or f"song_{sf.id}.{sf.format}"
-                zf.writestr(safe_name, content)
-            except Exception as e:
-                print(f"Error adding file {sf.id} to zip: {e}")
+@app.delete("/song-files/{song_file_id}")
+def delete_song_file(song_file_id: int, db: Session = Depends(get_db)):
+    """删除一条音频文件记录及对象存储中的对应对象。"""
+    song_file = db.scalar(select(SongFile).where(SongFile.id == song_file_id))
+    if not song_file:
+        raise HTTPException(status_code=404, detail="Song file not found")
+    try:
+        storage.delete_object(song_file.object_key)
+    except ClientError:
+        pass
+    db.delete(song_file)
+    db.commit()
+    return {"success": True}
+
+
+@app.post("/admin/songs/batch-download")
+def batch_download_songs_post(payload: BatchSongDownloadIn, db: Session = Depends(get_db)):
+    """按所选格式批量下载；仅包含各曲中实际存在的格式；单文件直接下载，多文件打 ZIP。"""
+    ids = list(dict.fromkeys(int(x) for x in payload.song_ids))
+    fmts = list(dict.fromkeys(payload.formats))
+    chosen = collect_batch_song_files(db, ids, fmts)
+    if not chosen:
+        raise HTTPException(status_code=404, detail="在已选歌曲中没有找到所选格式的文件")
+    if len(chosen) == 1:
+        return streaming_download_song_file(db, chosen[0])
+    zip_name = f"music-songs-batch-{download_zip_timestamp_tag()}.zip"
+    return zip_song_files_response(db, chosen, zip_name)
+
+
+@app.post("/admin/merge-duplicate-songs")
+def admin_merge_duplicate_songs(db: Session = Depends(get_db)):
+    """
+    手动再次合并重复歌曲（与启动时自动迁移规则相同）。
+    仅合并歌曲元数据与文件归属，不删除任何音频文件或存储对象。
+    """
+    stats = merge_duplicate_songs(db)
+    db.commit()
+    return stats
+
+
+@app.post("/admin/songs/merge-selected")
+def admin_merge_selected_songs(payload: SongMergeSelected, db: Session = Depends(get_db)):
+    """
+    批量合并用户勾选的歌曲：**合并到用户指定的 master_song_id**。
+    仅把从曲的 song_files 改挂到主曲；**主曲的元数据（含标签/语言/风格/艺人等）保持不变**。
+    歌单项会指向主曲（避免断链）；从曲 Song 行删除。
+    """
+    ids = sorted({int(x) for x in payload.song_ids if x})
+    master_id = int(payload.master_song_id)
+    songs = db.scalars(select(Song).where(Song.id.in_(ids))).all()
+    if len(songs) != len(ids):
+        raise HTTPException(status_code=404, detail="部分歌曲不存在或已删除")
+    merged_slaves = 0
+    try:
+        for sid in ids:
+            if sid == master_id:
                 continue
-    
-    memory_file.seek(0)
-    headers = {
-        "Content-Type": "application/zip",
-        "Content-Disposition": f"attachment; filename*=UTF-8''music_batch_{len(ids)}.zip",
-    }
-    return StreamingResponse(memory_file, media_type="application/zip", headers=headers)
+            master = db.scalar(select(Song).where(Song.id == master_id))
+            slave = db.scalar(select(Song).where(Song.id == sid))
+            if master and slave:
+                merge_slave_into_master(db, master, slave, merge_metadata=False)
+                merged_slaves += 1
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        orig = getattr(e, "orig", None)
+        detail = str(orig) if orig is not None else str(e)
+        raise HTTPException(status_code=409, detail=f"合并失败（数据冲突或唯一约束）: {detail}") from e
+    except OperationalError as e:
+        db.rollback()
+        orig = getattr(e, "orig", None)
+        detail = str(orig) if orig is not None else str(e)
+        raise HTTPException(status_code=500, detail=f"合并失败（数据库错误）: {detail}") from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"合并失败: {str(e)}") from e
+
+    master_song = db.scalar(select(Song).where(Song.id == master_id))
+    if master_song:
+        try:
+            relocate_song_files_storage(db, storage, master_song)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "歌曲已合并完成，但同步存储路径失败；可在后台对该曲使用「同步存储路径」重试。"
+                    f" 原因: {str(e)}"
+                ),
+            ) from e
+    return {"master_id": master_id, "merged_slave_songs": merged_slaves}
+
+
+@app.post("/admin/songs/{song_id}/relocate-storage")
+def admin_relocate_song_storage(song_id: int, db: Session = Depends(get_db)):
+    """
+    按当前歌曲元数据，将该曲下所有音频文件的存储键迁移到
+    `music/{原唱1&原唱2}/{歌曲名}/{文件名}.{格式}`。桶内 copy 成功后更新库并删旧键。
+    供后台对勾选曲目逐首调用以展示进度。
+    """
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    try:
+        n = relocate_song_files_storage(db, storage, song)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"song_id": song_id, "files_moved": n, "ok": True}

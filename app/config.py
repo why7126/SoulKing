@@ -8,6 +8,8 @@ class Settings(BaseSettings):
 
     app_name: str = "Personal Music MVP"
     database_url: str = "sqlite:///./music.db"
+    #: 连接 PostgreSQL/MySQL 时由 database 模块在 connect 事件中设置会话时区（SQLite 见 datetime_util）
+    database_timezone: str = "Asia/Shanghai"
 
     s3_endpoint_url: str = "http://localhost:9000"
     s3_access_key_id: str = "minioadmin"
