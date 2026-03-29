@@ -1,7 +1,9 @@
 from pathlib import Path
 import io
+import mimetypes
 import shutil
 import tempfile
+import urllib.error
 import zipfile
 from datetime import datetime
 from typing import Optional
@@ -45,6 +47,9 @@ from app.schemas import (
     SongFileRenameIn,
     SongFileVariantOut,
     SongMergeSelected,
+    SongMetadataAiParseEnabledOut,
+    SongMetadataAiParseIn,
+    SongMetadataAiParseOut,
     SongMetadataUpdate,
     SongOut,
     LanguageCreate,
@@ -57,12 +62,14 @@ from app.schemas import (
 from app.services import (
     attach_audio_file_to_song,
     choose_best_file,
+    effective_is_playable_web,
     get_or_create_album,
     get_or_create_artist,
     relocate_song_files_storage,
     scan_directory,
 )
 from app.services import SUPPORTED_EXTENSIONS, ingest_file
+from app.dify_workflow import extract_workflow_outputs, normalize_suggestions, run_dify_workflow
 from app.song_merge import merge_duplicate_songs, merge_slave_into_master
 from app.storage import S3Storage
 
@@ -81,6 +88,37 @@ scan_progress = {
     "start_time": None,
     "skipped_details": [],
 }
+
+
+def song_file_to_out(song_file: SongFile) -> SongFileOut:
+    """
+    手动组装，避免历史库里 format 等列为 NULL 时 model_validate 失败（否则会拖垮整个 SongDetailOut 序列化 → 500）。
+    """
+    fmt = (song_file.format or "").strip().lstrip(".").lower() or "unknown"
+    return SongFileOut(
+        id=song_file.id,
+        format=fmt,
+        bitrate=song_file.bitrate,
+        sample_rate=song_file.sample_rate,
+        bit_depth=song_file.bit_depth,
+        channels=song_file.channels,
+        file_size=song_file.file_size or 0,
+        is_lossless=bool(song_file.is_lossless),
+        is_playable_web=effective_is_playable_web(song_file),
+        original_filename=(song_file.original_filename or "").strip() or "audio",
+        created_at=song_file.created_at or datetime(1970, 1, 1),
+    )
+
+
+def stream_content_type_for_song_file(song_file: SongFile) -> str:
+    fmt = (song_file.format or "").strip().lower().lstrip(".")
+    mime = song_file.mime_type
+    if not mime or mime == "application/octet-stream":
+        guessed, _ = mimetypes.guess_type(f"x.{fmt}" if fmt else "")
+        mime = guessed
+    if fmt == "flac" and (not mime or mime == "application/octet-stream"):
+        mime = "audio/flac"
+    return mime or "application/octet-stream"
 
 
 def get_song_tag_names(db: Session, song_id: int) -> list[str]:
@@ -447,6 +485,7 @@ def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_na
         language=get_song_language_name(db, song),
         genre=get_song_genre_name(db, song),
         release_date=song.release_date,
+        film_tv=song.film_tv,
     )
 
 
@@ -486,6 +525,7 @@ def build_song_out_for_file(
         language=get_song_language_name(db, song),
         genre=get_song_genre_name(db, song),
         release_date=song.release_date or "",
+        film_tv=song.film_tv,
     )
 
 
@@ -613,6 +653,8 @@ def ensure_schema() -> None:
             connection.execute(text("ALTER TABLE songs ADD COLUMN chorus_artist_id INTEGER"))
         if "release_date" not in song_columns:
             connection.execute(text("ALTER TABLE songs ADD COLUMN release_date TEXT"))
+        if "film_tv" not in song_columns:
+            connection.execute(text("ALTER TABLE songs ADD COLUMN film_tv VARCHAR(255)"))
         if "genre_id" not in song_columns:
             connection.execute(text("ALTER TABLE songs ADD COLUMN genre_id INTEGER"))
         artist_columns = {col["name"] for col in inspect(engine).get_columns("artists")}
@@ -725,6 +767,43 @@ def admin_page():
     return FileResponse(static_dir / "admin.html")
 
 
+@app.get("/admin/song-metadata/ai-parse/enabled", response_model=SongMetadataAiParseEnabledOut)
+def song_metadata_ai_parse_enabled():
+    s = get_settings()
+    url_ok = bool((s.dify_workflow_api_url or "").strip())
+    key_ok = bool((s.dify_workflow_api_key or "").strip())
+    return SongMetadataAiParseEnabledOut(enabled=url_ok and key_ok)
+
+
+@app.post("/admin/song-metadata/ai-parse", response_model=SongMetadataAiParseOut)
+def song_metadata_ai_parse(payload: SongMetadataAiParseIn):
+    s = get_settings()
+    api_url = (s.dify_workflow_api_url or "").strip()
+    api_key = (s.dify_workflow_api_key or "").strip()
+    if not api_url or not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 Dify 工作流：请设置环境变量 DIFY_WORKFLOW_API_URL 与 DIFY_WORKFLOW_API_KEY",
+        )
+    title = (payload.title or "").strip()
+    lead = (payload.lead_artist or "").strip()
+    if not title or not lead:
+        raise HTTPException(status_code=400, detail="歌曲名与原唱均不能为空后才能使用 AI 解析")
+    inputs = {
+        s.dify_workflow_input_title: title,
+        s.dify_workflow_input_lead_artist: lead,
+    }
+    try:
+        raw = run_dify_workflow(api_url=api_url, api_key=api_key, inputs=inputs)
+        outs = extract_workflow_outputs(raw)
+        suggestions = normalize_suggestions(outs)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(status_code=502, detail=f"调用 Dify 网络错误: {e!s}") from e
+    return SongMetadataAiParseOut(suggestions=suggestions)
+
+
 @app.get("/admin/scan-progress", response_model=ScanProgress)
 def get_scan_progress():
     return ScanProgress(**scan_progress)
@@ -821,7 +900,12 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
 
         display_name = upload.filename or tmp_path.name
         try:
-            ok, skip_reason = ingest_file(db, storage, tmp_path)
+            ok, skip_reason = ingest_file(
+                db,
+                storage,
+                tmp_path,
+                source_filename=upload.filename,
+            )
             if ok:
                 added_count += 1
                 scan_progress["added_count"] = added_count
@@ -909,7 +993,15 @@ def list_songs(
 
         if keyword:
             kw = keyword.lower()
-            values = [song.title or "", lead_artist_name or "", chorus_artist_name or "", album_name or "", " / ".join(lyricist_names), " / ".join(composer_names)]
+            values = [
+                song.title or "",
+                lead_artist_name or "",
+                chorus_artist_name or "",
+                album_name or "",
+                song.film_tv or "",
+                " / ".join(lyricist_names),
+                " / ".join(composer_names),
+            ]
             if not any(kw in value.lower() for value in values):
                 continue
         if tag_ids and not set(tag_name_map.values()).issubset(set(tag_names)):
@@ -960,6 +1052,7 @@ def list_songs(
             "created_at": item.created_at.isoformat() if item.created_at else "",
             "updated_at": item.updated_at.isoformat() if item.updated_at else "",
             "release_date": item.release_date or "",
+            "film_tv": item.film_tv or "",
             "tags": tag_text,
             "language": item.language or "",
             "lyricists": ", ".join(item.lyricists or []),
@@ -1158,7 +1251,7 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         composers=get_song_role_artist_names(db, song, SongComposerArtist),
         album=album_name,
         duration_ms=song.duration_ms,
-        files=[SongFileOut.model_validate(f) for f in files],
+        files=[song_file_to_out(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
         language_ids=get_song_language_ids(db, song.id),
@@ -1170,6 +1263,7 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         genre_id=song.genre_id,
         genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
+        film_tv=song.film_tv,
     )
 
 
@@ -1252,6 +1346,9 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
     if payload.release_date is not None:
         song.release_date = payload.release_date.strip() or None
 
+    if "film_tv" in payload.model_dump(exclude_unset=True):
+        song.film_tv = (payload.film_tv or "").strip() or None
+
     db.flush()
     relocate_song_files_storage(db, storage, song)
     db.commit()
@@ -1272,7 +1369,7 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         composers=get_song_role_artist_names(db, song, SongComposerArtist),
         album=album_name,
         duration_ms=song.duration_ms,
-        files=[SongFileOut.model_validate(f) for f in files],
+        files=[song_file_to_out(f) for f in files],
         tags=get_song_tag_names(db, song.id),
         language=get_song_language_name(db, song),
         language_ids=get_song_language_ids(db, song.id),
@@ -1284,6 +1381,7 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         genre_id=song.genre_id,
         genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
+        film_tv=song.film_tv,
     )
 
 
@@ -1592,6 +1690,13 @@ def get_song_play(
         selected = next((f for f in files if f.format and f.format.lower() == preferred_format.lower()), None)
     if not selected:
         selected = choose_best_file(files)
+    # 试听必须返回浏览器可播资源；.effective_is_playable_web 与入库规则一致，修正历史行 is_playable_web=False 的 FLAC 等
+    if selected and not effective_is_playable_web(selected):
+        playable_files = [f for f in files if effective_is_playable_web(f)]
+        if playable_files:
+            selected = choose_best_file(playable_files)
+        else:
+            raise HTTPException(status_code=400, detail="当前歌曲没有可用于浏览器试听的音频格式")
 
     return PlayResponse(
         song_id=song_id,
@@ -1640,9 +1745,10 @@ def stream_song_file(song_file_id: int, request: Request, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Audio object not found") from exc
 
     body = s3_object["Body"]
+    content_type = stream_content_type_for_song_file(song_file)
     headers = {
         "Accept-Ranges": "bytes",
-        "Content-Type": song_file.mime_type or "application/octet-stream",
+        "Content-Type": content_type,
     }
 
     if "ContentRange" in s3_object:
@@ -1651,7 +1757,7 @@ def stream_song_file(song_file_id: int, request: Request, db: Session = Depends(
         headers["Content-Length"] = str(s3_object["ContentLength"])
 
     status_code = 206 if range_header else 200
-    return StreamingResponse(body.iter_chunks(), media_type=song_file.mime_type, headers=headers, status_code=status_code)
+    return StreamingResponse(body.iter_chunks(), media_type=content_type, headers=headers, status_code=status_code)
 
 
 @app.get("/song-files/{song_file_id}/download")
@@ -1692,7 +1798,7 @@ def patch_song_file(song_file_id: int, body: SongFileRenameIn, db: Session = Dep
     relocate_song_files_storage(db, storage, song)
     db.commit()
     db.refresh(song_file)
-    return SongFileOut.model_validate(song_file)
+    return song_file_to_out(song_file)
 
 
 @app.post("/songs/{song_id}/files", response_model=SongFileOut)
@@ -1730,7 +1836,7 @@ async def add_song_file_to_song(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    return SongFileOut.model_validate(song_file)
+    return song_file_to_out(song_file)
 
 
 @app.delete("/song-files/{song_file_id}")

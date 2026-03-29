@@ -115,6 +115,8 @@ def _fill_master_from_slave(master: Song, slave: Song) -> None:
         master.duration_ms = slave.duration_ms
     if not master.release_date and slave.release_date:
         master.release_date = slave.release_date
+    if not (master.film_tv or "").strip() and (slave.film_tv or "").strip():
+        master.film_tv = slave.film_tv
 
 
 def merge_slave_into_master(

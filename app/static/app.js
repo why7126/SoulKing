@@ -43,6 +43,29 @@ const modalState = {
   resolver: null,
 };
 
+const WEB_PLAYABLE_AUDIO_FORMATS = new Set(["mp3", "m4a", "aac", "ogg", "wav", "flac"]);
+
+function normalizeAudioFmtApp(f) {
+  return String(f || "").toLowerCase().replace(/^\./, "").trim();
+}
+
+function songHasWebPlayableAudioApp(song) {
+  if (!song) return false;
+  const fm = (song.formats || []).map((x) => normalizeAudioFmtApp(x)).filter(Boolean);
+  if (fm.length) return fm.some((x) => WEB_PLAYABLE_AUDIO_FORMATS.has(x));
+  if (song.file_format) return WEB_PLAYABLE_AUDIO_FORMATS.has(normalizeAudioFmtApp(song.file_format));
+  return false;
+}
+
+function syncAddToPlaylistButton() {
+  if (!els.addToPlaylistBtn) return;
+  const song = state.songs.find((s) => s.id === state.selectedSongId);
+  const ok = !!(song && songHasWebPlayableAudioApp(song));
+  els.addToPlaylistBtn.disabled = !ok;
+  els.addToPlaylistBtn.title = ok ? "加入歌单" : "该歌曲仅含 APE 等格式，不支持加入歌单";
+  els.addToPlaylistBtn.classList.toggle("hidden", !ok);
+}
+
 async function request(path, options = {}) {
   const res = await fetch(path, options);
   if (!res.ok) {
@@ -131,6 +154,7 @@ function renderSongList() {
     item.addEventListener("click", () => openSongDetail(song.id));
     els.songList.appendChild(item);
   });
+  syncAddToPlaylistButton();
 }
 
 function renderPlaylists() {
@@ -210,6 +234,10 @@ function syncQueue() {
 async function playSongAt(index) {
   if (!state.queue.length || index < 0 || index >= state.queue.length) return;
   const song = state.queue[index];
+  if (!songHasWebPlayableAudioApp(song)) {
+    showToast("该歌曲仅含 APE 等格式，浏览器无法试听", "error");
+    return;
+  }
   state.currentIndex = index;
   state.selectedSongId = song.id;
   renderSongList();
@@ -243,6 +271,7 @@ async function openSongDetail(songId) {
   renderSongList();
 
   const detail = await request(`/songs/${songId}`);
+  syncAddToPlaylistButton();
   els.detailEmpty.classList.add("hidden");
   els.detailBody.classList.remove("hidden");
   els.detailTitle.textContent = detail.title;
@@ -256,20 +285,23 @@ async function openSongDetail(songId) {
       <strong>${file.format.toUpperCase()}</strong>
       <p class="variant-meta">${file.bitrate ? `${file.bitrate} kbps` : "-"} · ${file.sample_rate ? `${file.sample_rate} Hz` : "-"} · ${file.channels ? `${file.channels}ch` : "-"} · ${fmtSize(file.file_size)}</p>
       <div class="variant-actions">
-        <button class="btn btn-primary" data-role="play">试听</button>
+        ${file.is_playable_web ? '<button class="btn btn-primary" data-role="play">试听</button>' : ""}
         <button class="btn" data-role="download">下载</button>
       </div>
     `;
 
-    card.querySelector('[data-role="play"]').addEventListener("click", async () => {
-      try {
-        els.audioPlayer.src = `/song-files/${file.id}/stream`;
-        els.nowPlaying.textContent = `${detail.title} · ${file.format.toUpperCase()}`;
-        await els.audioPlayer.play();
-      } catch (err) {
-        showToast(`试听失败: ${err.message}`, "error");
-      }
-    });
+    const playVariantBtn = card.querySelector('[data-role="play"]');
+    if (playVariantBtn) {
+      playVariantBtn.addEventListener("click", async () => {
+        try {
+          els.audioPlayer.src = `/song-files/${file.id}/stream`;
+          els.nowPlaying.textContent = `${detail.title} · ${file.format.toUpperCase()}`;
+          await els.audioPlayer.play();
+        } catch (err) {
+          showToast(`试听失败: ${err.message}`, "error");
+        }
+      });
+    }
 
     card.querySelector('[data-role="download"]').addEventListener("click", async () => {
       try {

@@ -40,6 +40,7 @@ class Song(Base):
     language_id: Mapped[Optional[int]] = mapped_column(ForeignKey("languages.id"), nullable=True, index=True)
     genre_id: Mapped[Optional[int]] = mapped_column(ForeignKey("genres.id"), nullable=True, index=True)
     release_date: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    film_tv: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive, onupdate=now_cn_naive)

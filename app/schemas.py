@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -62,6 +62,7 @@ class SongOut(BaseModel):
     language: Optional[str] = None
     genre: Optional[str] = None
     release_date: Optional[str] = None
+    film_tv: Optional[str] = None
 
 
 class SongDetailOut(BaseModel):
@@ -88,6 +89,7 @@ class SongDetailOut(BaseModel):
     genre_id: Optional[int] = None
     genre_ids: list[int] = []
     release_date: Optional[str] = None
+    film_tv: Optional[str] = None
 
 
 class SongMetadataUpdate(BaseModel):
@@ -104,6 +106,7 @@ class SongMetadataUpdate(BaseModel):
     lyricist_ids: Optional[list[int]] = None
     composer_ids: Optional[list[int]] = None
     release_date: Optional[str] = None
+    film_tv: Optional[str] = None
 
 
 class BulkSongMetadataUpdate(BaseModel):
@@ -111,6 +114,23 @@ class BulkSongMetadataUpdate(BaseModel):
     artist: Optional[str] = None
     album: Optional[str] = None
     tag_ids: Optional[list[int]] = None
+
+
+class SongMetadataAiParseIn(BaseModel):
+    """调用 Dify 前须同时提供歌曲名与原唱（原唱可为多名，用顿号等分隔由前端拼接为一段文本）。"""
+
+    title: str
+    lead_artist: str
+
+
+class SongMetadataAiParseOut(BaseModel):
+    """规范化后的建议字段，供后台逐项或全部确认写入表单。"""
+
+    suggestions: dict[str, Any] = Field(default_factory=dict)
+
+
+class SongMetadataAiParseEnabledOut(BaseModel):
+    enabled: bool
 
 
 class SongMergeSelected(BaseModel):

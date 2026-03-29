@@ -48,6 +48,24 @@ const els = {
 
 const modalState = { resolver: null };
 
+/** 浏览器可试听格式（与后端 is_playable_web 一致，不含 APE） */
+const WEB_PLAYABLE_AUDIO_FORMATS = new Set(["mp3", "m4a", "aac", "ogg", "wav", "flac"]);
+
+function normalizeAudioFmtList(f) {
+  return String(f || "").toLowerCase().replace(/^\./, "").trim();
+}
+
+function songHasWebPlayableAudio(song) {
+  if (!song) return false;
+  const variants = song.file_variants || [];
+  const fromV = variants.map((v) => normalizeAudioFmtList(v.format)).filter(Boolean);
+  if (fromV.length) return fromV.some((x) => WEB_PLAYABLE_AUDIO_FORMATS.has(x));
+  const fm = (song.formats || []).map((x) => normalizeAudioFmtList(x)).filter(Boolean);
+  if (fm.length) return fm.some((x) => WEB_PLAYABLE_AUDIO_FORMATS.has(x));
+  if (song.file_format) return WEB_PLAYABLE_AUDIO_FORMATS.has(normalizeAudioFmtList(song.file_format));
+  return false;
+}
+
 function getApiUrl(path) {
   const base = typeof window !== "undefined" && window.location && window.location.origin ? window.location.origin : "";
   return path.startsWith("http") ? path : `${base}${path}`;
@@ -445,13 +463,19 @@ function renderPlaylists() {
 }
 
 async function playSong(songId, preferredFormat = "") {
+  const targetSong =
+    state.songs.find((s) => s.id === songId) ||
+    state.queue.find((s) => s.id === songId);
+  if (targetSong && !songHasWebPlayableAudio(targetSong)) {
+    showToast("该歌曲仅含 APE 等格式，浏览器无法试听", "error");
+    return;
+  }
   const url = preferredFormat ? `/songs/${songId}/play?preferred_format=${preferredFormat}` : `/songs/${songId}/play`;
   const playInfo = await request(url);
-  const song = state.songs.find((item) => item.id === songId);
   state.currentIndex = state.queue.findIndex((item) => item.id === songId);
   renderSongList();
   els.audioPlayer.src = playInfo.stream_url;
-  els.nowPlaying.textContent = `${song?.title || "未知歌曲"} · ${playInfo.selected_format.toUpperCase()}`;
+  els.nowPlaying.textContent = `${targetSong?.title || "未知歌曲"} · ${playInfo.selected_format.toUpperCase()}`;
   await els.audioPlayer.play();
 }
 
@@ -475,7 +499,9 @@ function prevIndex() {
 
 function playCurrentPlaylist() {
   if (!state.queue.length) return showToast("当前歌单暂无歌曲", "error");
-  playSong(state.queue[0].id).catch((err) => showToast(`播放失败: ${err.message}`, "error"));
+  const first = state.queue.find((s) => songHasWebPlayableAudio(s));
+  if (!first) return showToast("当前列表中歌曲均无可试听格式（如仅 APE）", "error");
+  playSong(first.id).catch((err) => showToast(`播放失败: ${err.message}`, "error"));
 }
 
 async function addSongToPlaylist(songId) {
@@ -504,8 +530,14 @@ async function removeSongFromCurrentPlaylist(songId) {
   await loadPlaylists();
 }
 
+const MSG_NO_WEB_PLAY_PREVIEW =
+  "该歌曲仅有 APE 等格式，浏览器无法在线试听，请下载后使用本地播放器或补充 MP3/FLAC 等可播格式";
+const MSG_NO_WEB_PLAY_ADD_PLAYLIST =
+  "该歌曲仅有 APE 等格式，无可在线试听的音频，暂不支持加入歌单（歌单需能正常播放）";
+
 function songActionsMarkup(song) {
   const removable = state.selectedPlaylistId !== null;
+  const canWeb = songHasWebPlayableAudio(song);
   const infoTags = [
     ...((song.formats || []).map((fmt) => ({ label: fmt.toUpperCase(), kind: "format" }))),
     ...(song.language ? [{ label: song.language, kind: "language" }] : []),
@@ -525,8 +557,16 @@ function songActionsMarkup(song) {
       <p class="song-meta"><span title="专辑">${song.album || "Unknown Album"}</span> · <span title="时长">${fmtDuration(song.duration_ms)}</span>${song.release_date ? ` · <span title="发行日期">${song.release_date}</span>` : ""}</p>
     </div>
     <div class="song-row-actions">
-      <button class="btn btn-mini icon-btn" data-role="play" title="试听" aria-label="试听">▶</button>
-      <button class="btn btn-mini icon-btn" data-role="add" title="加入歌单" aria-label="加入歌单">＋</button>
+      ${
+        canWeb
+          ? `<button type="button" class="btn btn-mini icon-btn" data-role="play" title="试听" aria-label="试听">▶</button>`
+          : `<span class="song-action-disabled-wrap" title="${escapeHtml(MSG_NO_WEB_PLAY_PREVIEW)}"><button type="button" class="btn btn-mini icon-btn" data-role="play" disabled aria-label="试听（不可用）">▶</button></span>`
+      }
+      ${
+        canWeb
+          ? `<button type="button" class="btn btn-mini icon-btn" data-role="add" title="加入歌单" aria-label="加入歌单">＋</button>`
+          : `<span class="song-action-disabled-wrap" title="${escapeHtml(MSG_NO_WEB_PLAY_ADD_PLAYLIST)}"><button type="button" class="btn btn-mini icon-btn" data-role="add" disabled aria-label="加入歌单（不可用）">＋</button></span>`
+      }
       <button class="btn btn-mini icon-btn" data-role="download" title="下载" aria-label="下载">↓</button>
       ${removable ? '<button class="btn btn-mini icon-btn danger-text" data-role="delete" title="删除" aria-label="删除">🗑</button>' : ""}
     </div>
@@ -551,10 +591,12 @@ function renderSongList() {
     });
     item.querySelector('[data-role="add"]').addEventListener("click", (e) => {
       e.stopPropagation();
+      if (e.currentTarget.disabled) return;
       addSongToPlaylist(song.id).catch((err) => showToast(`加入歌单失败: ${err.message}`, "error"));
     });
     item.querySelector('[data-role="play"]').addEventListener("click", (e) => {
       e.stopPropagation();
+      if (e.currentTarget.disabled) return;
       playSong(song.id).catch((err) => showToast(`试听失败: ${err.message}`, "error"));
     });
     item.querySelector('[data-role="download"]').addEventListener("click", async (e) => {

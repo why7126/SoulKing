@@ -12,8 +12,18 @@ from app.config import get_settings
 from app.models import Album, Artist, Language, ScanJob, Song, SongFile, SongLeadArtist
 from app.storage import S3Storage
 
-SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg", ".alac"}
-LOSSLESS_EXTENSIONS = {".flac", ".wav", ".alac"}
+SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg", ".alac", ".ape"}
+LOSSLESS_EXTENSIONS = {".flac", ".wav", ".alac", ".ape"}
+
+# 浏览器试听能力以格式为准（与入库时 is_playable_web 一致），避免历史数据中 FLAC 等仍为 False 导致无法播放
+BROWSER_PLAYABLE_FORMATS = frozenset({"mp3", "m4a", "aac", "ogg", "wav", "flac"})
+
+
+def effective_is_playable_web(song_file: SongFile) -> bool:
+    fmt = (song_file.format or "").strip().lower().lstrip(".")
+    if fmt in BROWSER_PLAYABLE_FORMATS:
+        return True
+    return bool(song_file.is_playable_web)
 
 
 def sha256_file(path: Path) -> str:
@@ -233,6 +243,14 @@ def get_or_create_artist(db: Session, name: str) -> Artist:
     return artist
 
 
+def lookup_artist_id_if_exists(db: Session, name: str) -> Optional[int]:
+    """按名称（忽略大小写）匹配已有艺人；不存在则返回 None，不新建（用于扫描/导入入库）。"""
+    n = (name or "").strip()
+    if not n:
+        return None
+    return db.scalar(select(Artist.id).where(func.lower(Artist.name) == n.lower()))
+
+
 def get_or_create_album(db: Session, name: str, artist_id: Optional[int]) -> Album:
     album = db.scalar(select(Album).where(func.lower(Album.name) == name.lower(), Album.artist_id == artist_id))
     if album:
@@ -382,7 +400,7 @@ def attach_audio_file_to_song(
         file_size=file_size,
         sha256=digest,
         is_lossless=ext_with_dot in LOSSLESS_EXTENSIONS,
-        is_playable_web=fmt in {"mp3", "m4a", "aac", "ogg", "wav"},
+        is_playable_web=fmt in {"mp3", "m4a", "aac", "ogg", "wav", "flac"},
     )
     object_key = compute_music_object_key(db, song, phantom)
 
@@ -401,7 +419,7 @@ def attach_audio_file_to_song(
         file_size=file_size,
         sha256=digest,
         is_lossless=ext_with_dot in LOSSLESS_EXTENSIONS,
-        is_playable_web=fmt in {"mp3", "m4a", "aac", "ogg", "wav"},
+        is_playable_web=fmt in {"mp3", "m4a", "aac", "ogg", "wav", "flac"},
     )
     db.add(song_file)
     try:
@@ -420,10 +438,17 @@ def attach_audio_file_to_song(
     return song_file
 
 
-def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Optional[str]]:
+def ingest_file(
+    db: Session,
+    storage: S3Storage,
+    path: Path,
+    *,
+    source_filename: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
     """
     扫描/导入单文件：若 (sha256, file_size) 已在 song_files 中存在则跳过；
     否则若已有相同歌名 + 主艺人的 Song 则只追加文件，否则新建 Song。
+    不入库自动新建艺人：仅当标签中的艺人在库中已存在时才关联主艺人，否则主艺人为空（可在后台再编辑）。
 
     返回 (True, None) 表示成功；(False, reason) 表示跳过或失败（reason 为人类可读说明）。
     """
@@ -437,12 +462,14 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Opti
             return False, duplicate_content_skip_reason(db, exists)
 
         metadata = extract_metadata(path)
-        artist = get_or_create_artist(db, metadata["artist"])
-        album = get_or_create_album(db, metadata["album"], artist.id)
+        source_name = (source_filename or path.name).strip() or path.name
+        source_stem = Path(source_name).stem.strip() or "Unknown"
+        artist_id = lookup_artist_id_if_exists(db, metadata["artist"])
+        album = get_or_create_album(db, metadata["album"], artist_id)
         song = locate_or_create_song_for_ingest(
             db,
-            title=metadata["title"],
-            artist_id=artist.id,
+            title=source_stem,
+            artist_id=artist_id,
             album_id=album.id,
             duration_ms=metadata["duration_ms"],
         )
@@ -456,7 +483,7 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Opti
         phantom = SongFile(
             song_id=song.id,
             object_key="",
-            original_filename=path.name,
+            original_filename=source_name[:512],
             format=ext,
             mime_type=content_type,
             bitrate=metadata["bitrate"],
@@ -466,7 +493,7 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Opti
             file_size=file_size,
             sha256=digest,
             is_lossless=path.suffix.lower() in LOSSLESS_EXTENSIONS,
-            is_playable_web=ext in {"mp3", "m4a", "aac", "ogg", "wav"},
+            is_playable_web=ext in {"mp3", "m4a", "aac", "ogg", "wav", "flac"},
         )
         object_key = compute_music_object_key(db, song, phantom)
         storage.upload_file(str(path), object_key, content_type=content_type)
@@ -475,7 +502,7 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Opti
         song_file = SongFile(
             song_id=song.id,
             object_key=object_key,
-            original_filename=path.name,
+            original_filename=source_name[:512],
             format=ext,
             mime_type=content_type,
             bitrate=metadata["bitrate"],
@@ -485,7 +512,7 @@ def ingest_file(db: Session, storage: S3Storage, path: Path) -> tuple[bool, Opti
             file_size=file_size,
             sha256=digest,
             is_lossless=path.suffix.lower() in LOSSLESS_EXTENSIONS,
-            is_playable_web=ext in {"mp3", "m4a", "aac", "ogg", "wav"},
+            is_playable_web=ext in {"mp3", "m4a", "aac", "ogg", "wav", "flac"},
         )
         db.add(song_file)
         db.commit()

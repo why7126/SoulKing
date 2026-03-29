@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     import_root: str = "/import"
     default_format_priority: str = "flac,alac,m4a,aac,mp3,ogg,wav"
 
+    #: Dify 工作流：POST 完整地址，一般为 …/v1/workflows/run
+    dify_workflow_api_url: str | None = None
+    dify_workflow_api_key: str | None = None
+    #: 与工作流「开始」节点中变量名一致（默认常见命名，可在 .env 覆盖）
+    dify_workflow_input_title: str = "song_title"
+    dify_workflow_input_lead_artist: str = "lead_artist"
+
 
 @lru_cache
 def get_settings() -> Settings:

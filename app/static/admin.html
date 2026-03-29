@@ -4,10 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SoulKing 音乐管理后台</title>
+    <link rel="icon" href="/static/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=20" />
+    <link rel="stylesheet" href="/static/styles.css?v=21" />
   </head>
   <body class="admin-body admin-table-body">
     <div class="bg-orb orb-1"></div>
@@ -34,7 +35,7 @@
     </header>
 
             <input id="directoryPicker" type="file" webkitdirectory directory multiple class="hidden" />
-            <input id="songFilePicker" type="file" accept="audio/*" multiple class="hidden" />
+            <input id="songFilePicker" type="file" accept=".mp3,.flac,.m4a,.aac,.wav,.ogg,.alac,.ape,audio/*" multiple class="hidden" />
 
     <main class="admin-main">
       <!-- 音乐管理页：当前页，含扫描目录与歌曲列表 -->
@@ -111,6 +112,7 @@
                     <th><button class="sort-btn" data-sort="lyricists" type="button">作词</button></th>
                     <th><button class="sort-btn" data-sort="composers" type="button">作曲</button></th>
                     <th><button class="sort-btn" data-sort="album" type="button">专辑</button></th>
+                    <th><button class="sort-btn" data-sort="film_tv" type="button">影视剧</button></th>
                     <th><button class="sort-btn" data-sort="language" type="button">语言</button></th>
                     <th><button class="sort-btn" data-sort="genre" type="button">风格</button></th>
                     <th><button class="sort-btn" data-sort="tags" type="button">标签</button></th>
@@ -119,7 +121,7 @@
                     <th><button class="sort-btn" data-sort="file_format" type="button">格式 / 播放</button></th>
                     <th><button class="sort-btn" data-sort="created_at" type="button">创建时间</button></th>
                     <th><button class="sort-btn" data-sort="updated_at" type="button">更新时间</button></th>
-                    <th>操作</th>
+                    <th class="col-actions">操作</th>
                   </tr>
                 </thead>
                 <tbody id="songTableBody"></tbody>
@@ -322,11 +324,22 @@
               <div class="form-field"><span>作词</span><div class="inline-artist-field"><div id="lyricistInput" class="multi-select"></div></div></div>
               <div class="form-field"><span>作曲</span><div class="inline-artist-field"><div id="composerInput" class="multi-select"></div></div></div>
               <div class="form-field"><span>专辑</span><input id="albumInput" type="text" /></div>
+              <div class="form-field"><span>影视剧</span><input id="filmTvInput" type="text" placeholder="如：电视剧/电影名称" /></div>
               <div class="form-field"><span>时长（毫秒）</span><input id="durationInput" type="number" min="0" /></div>
               <div class="form-field"><span>语言</span><div class="inline-artist-field"><div id="languageInput" class="multi-select"></div></div></div>
               <div class="form-field"><span>风格</span><div class="inline-artist-field"><div id="genreInput" class="multi-select"></div></div></div>
               <div class="form-field"><span>发布日期</span><input id="releaseDateInput" type="date" /></div>
             </div>
+            <section id="aiParseSection" class="ai-parse-section" aria-label="AI 解析">
+              <p class="song-meta">AI 解析</p>
+              <p class="muted ai-parse-desc">根据上方「歌曲名」与「原唱」调用 Dify 工作流补全其他元数据。返回结果仅作建议，需逐项「采用」或「全部采用建议」后才会写入表单，不会自动覆盖。</p>
+              <div class="ai-parse-toolbar">
+                <button type="button" id="aiParseBtn" class="btn btn-sm btn-outline" disabled>开始 AI 解析</button>
+                <span id="aiParseHint" class="muted ai-parse-hint"></span>
+                <span id="aiParseBusy" class="muted ai-parse-busy hidden">正在请求 Dify…</span>
+              </div>
+              <div id="aiSuggestPanel" class="ai-suggest-panel hidden" role="region" aria-live="polite"></div>
+            </section>
             <div class="tag-picker-wrap">
               <p class="song-meta">歌曲标签</p>
               <div id="singleTagOptions" class="tag-options"></div>
@@ -335,7 +348,7 @@
               <div class="variant-section-toolbar">
                 <p class="song-meta variant-section-label">音频文件</p>
                 <button type="button" id="songAddFileBtn" class="btn btn-sm btn-outline">添加文件</button>
-                <input type="file" id="songAddFileInput" class="hidden" accept=".mp3,.flac,.m4a,.aac,.wav,.ogg,.alac,audio/*" />
+                <input type="file" id="songAddFileInput" class="hidden" accept=".mp3,.flac,.m4a,.aac,.wav,.ogg,.alac,.ape,audio/*" />
               </div>
               <div id="variantList" class="variant-list"></div>
             </div>
@@ -456,6 +469,6 @@
       </div>
     </div>
 
-    <script type="module" src="/static/admin.js?v=27"></script>
+    <script type="module" src="/static/admin.js?v=30"></script>
   </body>
 </html>
