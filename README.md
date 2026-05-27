@@ -23,25 +23,34 @@ Python + FastAPI + SQLite + S3(MinIO) MVP for personal music management.
 
 ## Quick Start
 
-1. Copy env file:
+对象存储由并列目录 **ProjectMinio** 提供（独占本机 `9000` / 控制台 `9001`）。请先在其目录启动 MinIO，再启动本应用。
+
+1. 启动全局 MinIO（一次即可常驻）：
+
+```bash
+cd ../ProjectMinio   # 与本仓库并列时
+docker compose -f docker-compose.yaml -p minio up -d
+```
+
+2. Copy env file:
 
 ```bash
 cp .env.example .env
 ```
 
-2. Put music files in `./import`.
+3. Put music files in `./import`.
 
-3. Start services:
+4. Start app：
 
 ```bash
 docker compose up --build
 ```
 
-4. Open frontend:
+5. Open frontend:
 
 `http://localhost:8000/`
 
-5. Open API docs:
+6. Open API docs:
 
 `http://localhost:8000/docs`
 
@@ -71,9 +80,10 @@ docker compose up --build
 ## 故障排除
 
 - **`/admin` 连不上、进程启动失败**：请看终端日志。若为 `unable to open database file`，说明 SQLite 路径不可用。`.env` 里 `DATABASE_URL=sqlite:////data/music.db` **仅适合 Docker**（且需挂载 `./data:/data`）。在 **本机直接运行** `uvicorn` 时请改为 `DATABASE_URL=sqlite:///./data/music.db`（程序会自动创建父目录）。可先访问 `http://localhost:8000/health` 确认服务已起。
+- **对象存储连接失败**：先确认 ProjectMinio 已启动且 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/minio/health/live` 返回 `200`。Docker 运行应用时 `.env` 中应为 `S3_ENDPOINT_URL=http://host.docker.internal:9000`。应用启动时会 **最多约 90 秒** 内重试连接 MinIO（可先起容器再起 MinIO）；若仍失败，日志会提示先启动 ProjectMinio。本机直接 `uvicorn` 时用 `http://127.0.0.1:9000`。
 
 ## Notes
 
 - 使用 Docker 时数据库在容器内路径 `/data/music.db`，对应宿主机 `./data/music.db`。
-- Imported files are uploaded to MinIO buckets.
+- 音频写入 **ProjectMinio** 中配置的桶（`S3_BUCKET_*`）；本仓库 compose 不包含 MinIO。
 - This MVP is single-user and does not include auth.

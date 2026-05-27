@@ -1,7 +1,9 @@
+import time
 from typing import Optional
 
-from botocore.client import Config
 import boto3
+from botocore.client import Config
+from botocore.exceptions import EndpointConnectionError
 
 from app.config import get_settings
 
@@ -25,6 +27,23 @@ class S3Storage:
         for name in (self.settings.s3_bucket_music, self.settings.s3_bucket_covers):
             if name not in existing:
                 self.client.create_bucket(Bucket=name)
+
+    def ensure_buckets_retry(self, max_wait_seconds: float = 90.0, interval: float = 1.5) -> None:
+        """MinIO 可能比应用晚就绪（或未启动）；连接失败时重试，避免 Docker 一启动就退出。"""
+        deadline = time.monotonic() + max_wait_seconds
+        last: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                self.ensure_buckets()
+                return
+            except EndpointConnectionError as e:
+                last = e
+                time.sleep(interval)
+        raise RuntimeError(
+            f"{max_wait_seconds:.0f}s 内无法连接对象存储 {self.settings.s3_endpoint_url}。"
+            "请先在本机启动 ProjectMinio（并列目录下）："
+            "docker compose -f docker-compose.yaml -p minio up -d"
+        ) from last
 
     def upload_file(self, local_path: str, object_key: str, content_type: Optional[str] = None) -> None:
         if content_type:

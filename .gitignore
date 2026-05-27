@@ -7,3 +7,6 @@ loc_start.md
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv-mac-build/
+build/personal-music/
+dist/

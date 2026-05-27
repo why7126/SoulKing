@@ -37,6 +37,17 @@ class SongFileVariantOut(BaseModel):
     format: str
 
 
+class LyricLineOut(BaseModel):
+    time_ms: int
+    text: str
+
+
+class SongLyricsOut(BaseModel):
+    filename: str
+    content: str
+    lines: list[LyricLineOut] = []
+
+
 class SongOut(BaseModel):
     id: int
     title: str
@@ -63,6 +74,13 @@ class SongOut(BaseModel):
     genre: Optional[str] = None
     release_date: Optional[str] = None
     film_tv: Optional[str] = None
+    has_lyrics: bool = False
+
+
+class SongListPageOut(BaseModel):
+    items: list[SongOut]
+    total: int
+    library_total: int
 
 
 class SongDetailOut(BaseModel):
@@ -90,6 +108,7 @@ class SongDetailOut(BaseModel):
     genre_ids: list[int] = []
     release_date: Optional[str] = None
     film_tv: Optional[str] = None
+    has_lyrics: bool = False
 
 
 class SongMetadataUpdate(BaseModel):
@@ -114,23 +133,6 @@ class BulkSongMetadataUpdate(BaseModel):
     artist: Optional[str] = None
     album: Optional[str] = None
     tag_ids: Optional[list[int]] = None
-
-
-class SongMetadataAiParseIn(BaseModel):
-    """调用 Dify 前须同时提供歌曲名与原唱（原唱可为多名，用顿号等分隔由前端拼接为一段文本）。"""
-
-    title: str
-    lead_artist: str
-
-
-class SongMetadataAiParseOut(BaseModel):
-    """规范化后的建议字段，供后台逐项或全部确认写入表单。"""
-
-    suggestions: dict[str, Any] = Field(default_factory=dict)
-
-
-class SongMetadataAiParseEnabledOut(BaseModel):
-    enabled: bool
 
 
 class SongMergeSelected(BaseModel):

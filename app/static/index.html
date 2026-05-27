@@ -3,74 +3,489 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SoulKing - 个人音乐管理平台</title>
+    <title>SoulKing · AI 音乐资源库</title>
     <link rel="icon" href="/static/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=22" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css?v=42" />
+    <link rel="stylesheet" href="/static/studio.css?v=32" />
   </head>
-  <body>
+  <body class="front-app">
     <div class="bg-orb orb-1"></div>
     <div class="bg-orb orb-2"></div>
 
-    <header class="topbar">
-      <div class="topbar-brand">
-        <img src="/static/logo.png" alt="SoulKing" class="brand-icon" />
-        <div>
-          <p class="eyebrow">Local-first Music Library</p>
-          <h1>SoulKing 音乐库</h1>
+    <div class="app-shell">
+      <aside class="app-sidebar sk-studio-sidebar" id="frontSidebar" aria-label="主导航">
+        <div class="sk-brand">
+          <div class="sk-brand-mark">
+            <img src="/static/logo.png" alt="SoulKing" class="sk-brand-logo" width="40" height="40" decoding="async" />
+          </div>
+          <div class="sidebar-brand-text sk-brand-text">
+            <p class="sk-brand-title app-brand-title-row">
+              <span>SoulKing</span>
+              <span class="app-brand-version" id="appBrandVersion"></span>
+            </p>
+            <p class="sk-brand-sub">AI 音乐资料库</p>
+          </div>
+          <button
+            type="button"
+            id="frontSidebarCollapseBtn"
+            class="sidebar-collapse-btn"
+            aria-controls="frontSidebar"
+            aria-expanded="true"
+            aria-label="收起侧栏"
+          >
+            <svg class="sidebar-collapse-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
         </div>
-      </div>
-      <div class="page-actions">
-        <button id="goAdminBtn" class="btn btn-primary nav-btn" type="button">进入后台</button>
-      </div>
-    </header>
 
-    <main class="layout front-layout">
-      <aside class="panel sidebar-panel">
-        <div class="playlist-header">
-          <h2>歌单列表</h2>
-          <button id="createPlaylistBtn" class="btn">新建歌单</button>
+        <nav class="sk-nav" aria-label="资料库">
+          <button type="button" class="sk-nav-item is-active" data-sk-nav="library" title="音乐库">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            音乐库
+          </button>
+          <button type="button" class="sk-nav-item is-placeholder" title="暂未开发">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h6"/></svg>
+            歌单
+          </button>
+          <button type="button" class="sk-nav-item is-placeholder" title="暂未开发">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+            艺人
+          </button>
+          <button type="button" class="sk-nav-item" data-sk-nav="albums" title="专辑">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+            专辑
+          </button>
+          <button type="button" class="sk-nav-item is-placeholder" title="暂未开发">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 16-5-5L9 18"/></svg>
+            图片
+          </button>
+          <button type="button" class="sk-nav-item is-placeholder" title="暂未开发">
+            <svg class="sk-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2"/></svg>
+            视频
+          </button>
+        </nav>
+
+        <div class="sk-sidebar-bottom">
+          <div class="sk-sidebar-stat-row">
+            <span class="sk-sidebar-stat-count" id="sidebarSongCount">0</span>
+            <span class="sk-sidebar-stat-label">首歌库</span>
+          </div>
+          <div class="sk-user-row">
+            <button type="button" id="frontUserMenuBtn" class="sk-user-avatar" aria-label="打开用户菜单" aria-expanded="false" aria-haspopup="menu" aria-controls="frontUserMenu"></button>
+            <div class="sk-user-meta">
+              <strong>SoulKing</strong>
+            </div>
+          </div>
+          <div id="frontUserMenu" class="sk-user-menu hidden" role="menu" aria-label="用户菜单">
+            <button type="button" id="frontUserProfileBtn" class="sk-user-menu-item" role="menuitem">个人资料</button>
+            <button type="button" id="frontUserPasswordBtn" class="sk-user-menu-item" role="menuitem">修改密码</button>
+            <button type="button" id="frontUserAdminBtn" class="sk-user-menu-item" role="menuitem">进入后台</button>
+            <button type="button" id="frontUserLogoutBtn" class="sk-user-menu-item" role="menuitem">退出登录</button>
+          </div>
         </div>
-        <div id="playlistList" class="playlist-list"></div>
       </aside>
 
-      <section class="panel song-panel front-song-panel">
-        <div class="toolbar front-filter-toolbar">
-          <div class="search-field-wrap front-search-field-wrap">
-            <input id="keywordInput" type="text" placeholder="搜索歌名 / 艺人 / 专辑" autocomplete="off" />
-            <button type="button" id="frontKeywordClearBtn" class="search-clear-btn hidden" aria-label="清空关键词" title="清空">✕</button>
-          </div>
-          <select id="formatSelect"></select>
-          <select id="tagSelect"></select>
-          <select id="languageSelect"></select>
-          <button type="button" id="resetFrontFiltersBtn" class="btn hidden">重置</button>
-        </div>
-        <div id="songList" class="song-list front-song-list"></div>
-      </section>
-    </main>
+      <div class="app-main-wrap">
+        <div class="studio-root">
+          <header class="studio-top-header">
+            <div id="headerLeadPlaylistSpace" class="studio-header-lead hidden" aria-hidden="true">
+              <p class="sk-header-page-title">歌单空间</p>
+              <p class="sk-header-page-sub muted">管理你的歌单，发现更多好音乐</p>
+            </div>
+            <button type="button" id="btnBackPlaylistDetail" class="btn-studio-ghost studio-header-back hidden" aria-label="返回歌单列表">← 歌单</button>
+            <div id="headerSearchLibrary" class="studio-search-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input
+                id="keywordInput"
+                type="search"
+                autocomplete="off"
+                placeholder="搜索歌曲 / 艺人 / 专辑 / 标签 / 影视剧…"
+              />
+              <button type="button" id="frontKeywordClearBtn" class="studio-search-clear hidden" aria-label="清空">✕</button>
+              <span class="studio-search-kbd">⌘K</span>
+            </div>
+            <div class="studio-header-end">
+              <div id="headerActionsPlaylistSpace" class="studio-header-actions hidden">
+                <button type="button" id="createPlaylistBtn" class="btn-studio-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
+                  新建歌单
+                </button>
+                <button type="button" id="btnPlaylistSpaceAi" class="btn-studio-ai-outline">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" /></svg>
+                  AI 生成歌单
+                </button>
+              </div>
+              <div id="headerActionsPlaylistDetail" class="studio-header-actions hidden">
+                <button type="button" id="btnDetailImportMusic" class="btn-studio-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+                  导入音乐
+                </button>
+                <button type="button" id="btnDetailNewPlaylist" class="btn-studio-secondary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                  新建歌单
+                </button>
+              </div>
+            </div>
+          </header>
 
-    <footer class="player panel">
-      <div class="now-playing-block">
-        <div class="now-playing">
-          <span class="muted">正在播放</span>
-          <strong id="nowPlaying">暂无</strong>
-        </div>
-        <div class="player-controls">
-          <button id="prevBtn" class="btn">上一首</button>
-          <button id="nextBtn" class="btn">下一首</button>
-          <button id="playPlaylistBtn" class="btn">播放歌单</button>
-          <select id="playModeSelect">
-            <option value="list-loop">列表循环</option>
-            <option value="single-loop">单曲循环</option>
-            <option value="shuffle">随机播放</option>
-            <option value="sequence">顺序播放</option>
-          </select>
-        </div>
+          <div class="studio-body">
+            <div class="studio-main-column">
+            <section id="songBrowseSection" class="studio-library song-browse-section" aria-label="曲库">
+              <div class="studio-library-head">
+                <div>
+                  <h2 id="libraryViewTitle">音乐库</h2>
+                  <span class="sk-count">共 <strong id="librarySongCount">0</strong> 首歌曲</span>
+                </div>
+              </div>
+
+              <div class="studio-library-controls">
+                <div class="studio-library-toolbar">
+                  <div class="studio-library-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" />
+                    </svg>
+                    <input
+                      id="libraryKeywordInput"
+                      type="search"
+                      autocomplete="off"
+                      placeholder="搜索歌曲 / 艺人 / 专辑 / 标签 / 文件名…"
+                    />
+                    <button type="button" id="libraryKeywordClearBtn" class="studio-search-clear hidden" aria-label="清空">✕</button>
+                    <span class="studio-search-kbd">⌘K</span>
+                  </div>
+                  <div class="studio-library-toolbar-filters">
+                    <button
+                      type="button"
+                      id="frontToggleFilterBtn"
+                      class="btn-studio-ghost"
+                      aria-expanded="false"
+                      aria-controls="frontFilterSection"
+                    >
+                      更多筛选
+                    </button>
+                    <button type="button" id="resetFrontFiltersBtn" class="btn-studio-ghost hidden">重置</button>
+                  </div>
+                </div>
+                <div id="frontFilterSection" class="studio-library-filters-panel hidden" aria-hidden="true">
+                  <div class="studio-library-filters">
+                    <select id="frontFilterLeadQuick" class="studio-filter-select" multiple data-filter-label="原唱" title="原唱"></select>
+                    <select id="frontFilterLyricistQuick" class="studio-filter-select" multiple data-filter-label="作词" title="作词"></select>
+                    <select id="frontFilterComposerQuick" class="studio-filter-select" multiple data-filter-label="作曲" title="作曲"></select>
+                    <select id="tagSelect" class="studio-filter-select" multiple data-filter-label="标签" title="标签"></select>
+                    <select id="formatSelect" class="studio-filter-select" multiple data-filter-label="格式" title="格式"></select>
+                    <select id="languageSelect" class="studio-filter-select" multiple data-filter-label="语言" title="语言"></select>
+                    <select id="genreSelect" class="studio-filter-select" multiple data-filter-label="风格" title="风格"></select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="studio-library-list">
+              <div class="song-table-wrap studio-library-table-wrap">
+                <table class="song-table studio-library-table">
+                  <thead>
+                    <tr>
+                      <th class="sk-col-idx">#</th>
+                      <th class="sk-col-title">歌曲</th>
+                      <th class="sk-col-meta">原唱</th>
+                      <th class="sk-col-meta">作词</th>
+                      <th class="sk-col-meta">作曲</th>
+                      <th class="sk-col-meta">专辑</th>
+                      <th class="sk-col-meta">语言</th>
+                      <th class="sk-col-meta">风格</th>
+                      <th class="sk-col-meta">影视剧</th>
+                      <th class="sk-col-meta">标签</th>
+                      <th class="sk-col-meta">格式</th>
+                      <th class="sk-col-meta">时长</th>
+                      <th class="sk-col-meta">发行日期</th>
+                      <th class="sk-col-actions">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="songList"></tbody>
+                </table>
+              </div>
+              </div>
+
+              <footer class="studio-pagination" id="studioPaginationBar">
+                <div class="sk-pagination-summary">
+                  <span id="frontSongListTotalLabel" class="sk-list-total">共 0 首</span>
+                  <span id="frontPageInfoLabel" class="sk-page-info">第 1 / 1 页</span>
+                </div>
+                <div class="sk-pagination">
+                  <button type="button" class="sk-page-btn sk-page-btn-edge" id="frontPageFirstBtn" aria-label="首页">«</button>
+                  <button type="button" class="sk-page-btn" id="frontPagePrevBtn" aria-label="上一页">‹</button>
+                  <span id="frontPageNumbers"></span>
+                  <button type="button" class="sk-page-btn" id="frontPageNextBtn" aria-label="下一页">›</button>
+                  <button type="button" class="sk-page-btn sk-page-btn-edge" id="frontPageLastBtn" aria-label="末页">»</button>
+                  <select id="frontPageSizeSelect" class="sk-page-size" aria-label="每页条数">
+                    <option value="20" selected>20 条/页</option>
+                    <option value="50">50 条/页</option>
+                    <option value="100">100 条/页</option>
+                  </select>
+                </div>
+              </footer>
+            </section>
+
+            <section id="playlistRoutesWrap" class="playlist-routes-wrap hidden" aria-label="歌单">
+              <div id="playlistSpacePage" class="playlist-space-page">
+                <div class="playlist-space-layout">
+                  <div class="playlist-space-main">
+                    <div class="ps-tabs-row">
+                      <div class="ps-tabs" role="tablist">
+                        <button type="button" class="ps-tab is-active" data-ps-tab="all">全部</button>
+                        <button type="button" class="ps-tab" data-ps-tab="mine">我的歌单</button>
+                        <button type="button" class="ps-tab" data-ps-tab="fav">收藏歌单</button>
+                        <button type="button" class="ps-tab" data-ps-tab="ai">AI 歌单</button>
+                        <button type="button" class="ps-tab" data-ps-tab="recent">最近播放</button>
+                        <button type="button" class="ps-tab" data-ps-tab="scene">场景歌单</button>
+                        <button type="button" class="ps-tab" data-ps-tab="genre">风格歌单</button>
+                      </div>
+                      <div class="ps-tabs-tools">
+                        <select id="playlistSortSelect" class="ps-sort-select" aria-label="排序">
+                          <option value="updated">最近更新</option>
+                          <option value="name">名称</option>
+                          <option value="count">曲目数</option>
+                        </select>
+                        <div class="ps-view-toggle" role="group" aria-label="视图">
+                          <button type="button" id="psViewGridBtn" class="ps-view-btn is-active" title="网格">▦</button>
+                          <button type="button" id="psViewListBtn" class="ps-view-btn" title="列表">▤</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <section class="ps-section" aria-labelledby="psRecHeading">
+                      <div class="ps-section-head">
+                        <h3 id="psRecHeading" class="ps-section-title">为你推荐</h3>
+                      </div>
+                      <div id="playlistRecommendRow" class="ps-rec-row"></div>
+                    </section>
+
+                    <section class="ps-section" aria-labelledby="psAllHeading">
+                      <div class="ps-section-head">
+                        <h3 id="psAllHeading" class="ps-section-title">全部歌单 <span id="playlistTotalCount" class="ps-count-chip">0</span></h3>
+                      </div>
+                      <div id="playlistCardGrid" class="ps-card-grid"></div>
+                    </section>
+                  </div>
+
+                  <aside class="playlist-space-aside" aria-label="统计与分类">
+                    <div class="ps-aside-card">
+                      <h4 class="ps-aside-title">歌单概览</h4>
+                      <div class="ps-stat-rings">
+                        <div class="ps-mini-ring" title="歌单数">
+                          <span id="psStatPlaylists">0</span>
+                          <small>歌单</small>
+                        </div>
+                        <div class="ps-mini-ring" title="曲目数">
+                          <span id="psStatSongs">0</span>
+                          <small>歌曲</small>
+                        </div>
+                        <div class="ps-mini-ring" title="总时长">
+                          <span id="psStatHours">0h</span>
+                          <small>时长</small>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="ps-aside-card">
+                      <h4 class="ps-aside-title">分类浏览</h4>
+                      <ul class="ps-cat-list">
+                        <li><span class="ps-cat-ico">🎵</span> 华语流行 <span class="ps-cat-n">28</span></li>
+                        <li><span class="ps-cat-ico">🎷</span> 粤语经典 <span class="ps-cat-n">16</span></li>
+                        <li><span class="ps-cat-ico">🎸</span> 摇滚 <span class="ps-cat-n">12</span></li>
+                        <li><span class="ps-cat-ico">🎹</span> 纯音乐 <span class="ps-cat-n">9</span></li>
+                      </ul>
+                    </div>
+                    <div class="ps-aside-card">
+                      <h4 class="ps-aside-title">最近更新</h4>
+                      <ul id="psAsideRecentList" class="ps-recent-mini"></ul>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+
+              <div id="playlistDetailPage" class="playlist-detail-page hidden">
+                <div class="pd-layout">
+                  <div class="pd-main">
+                    <header class="pd-hero">
+                      <div class="pd-hero-collage" id="pdHeroCollage" aria-hidden="true"></div>
+                      <div class="pd-hero-body">
+                        <div class="pd-vinyl-bg" aria-hidden="true"></div>
+                        <h1 class="pd-title" id="pdPlaylistTitle">歌单</h1>
+                        <p class="pd-desc muted" id="pdPlaylistDesc">精选曲目合集，点击播放即可试听。</p>
+                        <div class="pd-meta-row" id="pdMetaRow"></div>
+                        <div class="pd-actions">
+                          <button type="button" id="pdPlayAllBtn" class="btn-studio-primary pd-play-all">播放全部</button>
+                          <button type="button" id="pdEditBtn" class="btn-studio-secondary">编辑</button>
+                          <button type="button" id="pdAddSongsBtn" class="btn-studio-secondary">添加歌曲</button>
+                          <button type="button" id="pdDownloadBtn" class="btn-studio-secondary">下载</button>
+                          <button type="button" id="pdMoreBtn" class="btn-studio-ghost" aria-label="更多">⋯</button>
+                        </div>
+                      </div>
+                    </header>
+
+                    <div class="pd-tabs-row">
+                      <div class="pd-tabs" role="tablist">
+                        <button type="button" class="pd-tab is-active" data-pd-tab="songs">歌曲列表</button>
+                        <button type="button" class="pd-tab" data-pd-tab="info">歌单详情</button>
+                        <button type="button" class="pd-tab" data-pd-tab="comments">评论 <span class="pd-tab-badge">23</span></button>
+                        <button type="button" class="pd-tab" data-pd-tab="history">播放历史</button>
+                      </div>
+                    </div>
+
+                    <div id="pdPanelSongs" class="pd-panel">
+                      <div class="pd-toolbar">
+                        <div class="studio-search-wrap pd-local-search">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                          </svg>
+                          <input id="pdSongFilterInput" type="search" placeholder="筛选歌曲…" autocomplete="off" />
+                        </div>
+                        <button type="button" class="btn-studio-ghost" title="筛选">⚙</button>
+                        <select id="pdSongSortSelect" class="ps-sort-select">
+                          <option value="order">默认顺序</option>
+                          <option value="title">曲名</option>
+                          <option value="artist">艺人</option>
+                        </select>
+                        <div class="ps-view-toggle" role="group">
+                          <button type="button" class="ps-view-btn is-active" title="列表">▤</button>
+                          <button type="button" class="ps-view-btn" title="网格" disabled style="opacity: 0.35">▦</button>
+                        </div>
+                      </div>
+                      <div class="song-table-wrap pd-table-wrap">
+                        <table class="song-table pd-song-table">
+                          <thead>
+                            <tr>
+                              <th class="sk-col-check"><input type="checkbox" id="pdSongSelectAll" aria-label="全选" /></th>
+                              <th class="pd-col-idx">#</th>
+                              <th class="sk-col-title">歌曲</th>
+                              <th>艺人</th>
+                              <th>专辑</th>
+                              <th>时长</th>
+                              <th>加入日期</th>
+                              <th style="text-align: center">元数据</th>
+                              <th style="width: 88px; text-align: right">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody id="playlistDetailSongList"></tbody>
+                        </table>
+                      </div>
+                      <div class="pd-table-footer muted">
+                        <span id="pdSongSummary">共 0 首歌曲</span>
+                        <span id="pdSongDurationSum">0:00:00</span>
+                      </div>
+                    </div>
+
+                    <div id="pdPanelPlaceholder" class="pd-panel hidden muted" style="padding: 48px; text-align: center">
+                      该标签页为示意 UI，后续可接入详情与评论。
+                    </div>
+                  </div>
+
+                  <aside class="pd-aside" aria-label="歌单侧栏">
+                    <div class="pd-aside-card">
+                      <h4 class="pd-aside-title">歌单信息</h4>
+                      <label class="pd-field"><span>名称</span><input id="pdFieldName" type="text" readonly /></label>
+                      <label class="pd-field"><span>简介</span><textarea id="pdFieldDesc" rows="3" readonly></textarea></label>
+                      <div class="pd-tags" id="pdFieldTags"></div>
+                      <p class="pd-aside-meta muted" id="pdAsideTimes"></p>
+                    </div>
+                    <div class="pd-aside-card">
+                      <h4 class="pd-aside-title">统计</h4>
+                      <div class="pd-stat-rings">
+                        <div class="pd-ring"><svg viewBox="0 0 36 36"><circle class="pd-ring-bg" cx="18" cy="18" r="15.9155"></circle><circle class="pd-ring-fg pd-ring-accent" id="pdRingSongs" cx="18" cy="18" r="15.9155"></circle></svg><div class="pd-ring-lbl"><span id="pdRingSongsLbl">0</span><small>歌曲</small></div></div>
+                        <div class="pd-ring"><svg viewBox="0 0 36 36"><circle class="pd-ring-bg" cx="18" cy="18" r="15.9155"></circle><circle class="pd-ring-fg pd-ring-accent" id="pdRingDur" cx="18" cy="18" r="15.9155"></circle></svg><div class="pd-ring-lbl"><span id="pdRingDurLbl">0:00</span><small>总时长</small></div></div>
+                        <div class="pd-ring"><svg viewBox="0 0 36 36"><circle class="pd-ring-bg" cx="18" cy="18" r="15.9155"></circle><circle class="pd-ring-fg pd-ring-ok" id="pdRingMeta" cx="18" cy="18" r="15.9155"></circle></svg><div class="pd-ring-lbl"><span id="pdRingMetaLbl">0%</span><small>完整度</small></div></div>
+                      </div>
+                    </div>
+                    <div class="pd-aside-card">
+                      <h4 class="pd-aside-title">相似歌单</h4>
+                      <ul id="pdSimilarList" class="pd-similar-list"></ul>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+            </section>
+            </div>
+
+            <aside class="studio-inspector" id="inspectorPanel" aria-label="详情">
+              <div class="studio-inspector-cover">
+                <div class="studio-cover-art" id="inspectorCover">
+                  <span class="studio-cover-placeholder" id="inspectorCoverPh">♪</span>
+                </div>
+                <h3 class="studio-inspector-title" id="inspectorTitle">未选择曲目</h3>
+                <p class="studio-inspector-artist" id="inspectorArtist">在列表中选择一首歌曲</p>
+                <div class="studio-inspector-actions">
+                  <button type="button" id="inspectorPlayBtn" class="btn-studio-primary">播放</button>
+                </div>
+              </div>
+              <div class="studio-inspector-tabs" role="tablist">
+                <button type="button" class="is-active" data-tab="detail">详情</button>
+                <button type="button" data-tab="lyrics">歌词</button>
+                <button type="button" data-tab="related">关联</button>
+                <button type="button" data-tab="files">文件</button>
+              </div>
+              <div class="studio-inspector-body" id="inspectorBody">
+                <div class="studio-empty-inspector" id="inspectorEmpty">选择左侧列表中的曲目查看元数据与完整性。</div>
+                <div id="inspectorDetail" class="hidden"></div>
+              </div>
+            </aside>
+          </div>
+
+        <footer class="studio-player panel">
+          <div class="studio-player-row studio-player-row--controls">
+            <div class="studio-player-left">
+              <div class="studio-player-thumb" id="playerThumb">♪</div>
+              <div class="studio-player-meta">
+                <div class="t" id="playerBarTitle">暂无播放</div>
+                <div class="a" id="playerBarArtist">—</div>
+                <div class="studio-player-next" id="playerNextHint"></div>
+              </div>
+            </div>
+            <div class="studio-player-mid">
+              <div class="studio-transport">
+                <button type="button" id="prevBtn" aria-label="上一首">⏮</button>
+                <button type="button" id="playerPlayPauseBtn" data-role="playpause" aria-label="播放或暂停">▶</button>
+                <button type="button" id="nextBtn" aria-label="下一首">⏭</button>
+                <select id="playModeSelect" class="studio-play-mode-select" aria-label="播放模式">
+                  <option value="list-loop">列表循环</option>
+                  <option value="single-loop">单曲循环</option>
+                  <option value="shuffle">随机播放</option>
+                  <option value="sequence">顺序播放</option>
+                </select>
+              </div>
+              <div class="studio-progress-row">
+                <span class="studio-time" id="playerCurrentTime">0:00</span>
+                <div class="studio-progress-track" id="playerProgressTrack">
+                  <div class="sk-player-wave" aria-hidden="true"></div>
+                  <div class="studio-progress-fill" id="playerProgressFill"></div>
+                </div>
+                <span class="studio-time" id="playerDuration">0:00</span>
+              </div>
+            </div>
+            <div class="studio-player-right">
+              <div class="studio-volume">
+                <span aria-hidden="true">🔊</span>
+                <input type="range" id="playerVolume" min="0" max="100" value="100" aria-label="音量" />
+              </div>
+              <button type="button" id="playPlaylistBtn" class="btn-studio-ghost" title="播放当前列表">📋</button>
+              <button type="button" id="playerLyricsToggleBtn" class="btn-studio-ghost sk-pl-aux" title="隐藏歌词" aria-label="歌词" aria-pressed="true">词</button>
+              <button type="button" class="btn-studio-ghost sk-pl-aux" title="全屏" aria-label="全屏">⛶</button>
+            </div>
+          </div>
+          <div class="studio-player-row studio-player-row--lyrics">
+            <p class="studio-lyric-hint" id="playerLyricLine">当前暂无歌词同步显示</p>
+          </div>
+          <audio id="audioPlayer" preload="metadata"></audio>
+        </footer>
       </div>
-      <audio id="audioPlayer" controls preload="metadata"></audio>
-    </footer>
+    </div>
 
     <div id="toastContainer" class="toast-container"></div>
 
@@ -94,7 +509,6 @@
       </div>
     </div>
 
-    <!-- 下载：勾选格式（与后台单曲下载一致） -->
     <div id="downloadFormatsOverlay" class="modal-overlay hidden">
       <div class="modal-card">
         <div class="modal-head">
@@ -110,6 +524,6 @@
       </div>
     </div>
 
-    <script type="module" src="/static/frontend.js?v=10"></script>
+    <script type="module" src="/static/frontend.js?v=49"></script>
   </body>
 </html>

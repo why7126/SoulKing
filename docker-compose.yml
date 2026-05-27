@@ -1,3 +1,4 @@
+# 对象存储使用并列目录 ProjectMinio（独占宿主机 9000/9001），本 compose 不再包含 minio 服务。
 services:
   app:
     build: .
@@ -9,18 +10,7 @@ services:
     volumes:
       - ./data:/data
       - ./import:/import
-    depends_on:
-      - minio
-
-  minio:
-    image: minio/minio:latest
-    container_name: music-mvp-minio
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    command: server /data --console-address ":9001"
-    volumes:
-      - ./minio-data:/data
+      # 挂载应用代码，改 HTML/CSS/JS 后重启容器即可生效，无需每次 rebuild
+      - ./app:/app/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1,0 +1,11 @@
+{
+  "name": "project-music",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "node scripts/debug-user-menu.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

@@ -36,10 +36,28 @@ def _duration_bucket(duration_ms: Optional[int]) -> Optional[int]:
     return round(duration_ms / 2000) * 2000
 
 
-def _song_merge_key(song: Song) -> tuple:
+def _song_merge_key(db: Session, song: Song) -> tuple:
+    """
+    分组键：同歌名且「主艺人可区分」时才可能合并。
+    - song.artist_id 已设置：按主艺人 id。
+    - 否则：按 SongLeadArtist 顺序的 id 元组（后台可填多名原唱）。
+    - 既无主艺人又无原唱关联：每首歌单独键 (anon, song.id)，避免不同歌手同名无档案曲被并成一首。
+    """
     title = (song.title or "").strip().lower()
-    artist_key = song.artist_id if song.artist_id is not None else -1
-    return (title, artist_key, _duration_bucket(song.duration_ms))
+    dur = _duration_bucket(song.duration_ms)
+    if song.artist_id is not None:
+        return (title, ("main", int(song.artist_id)), dur)
+    lead_ids = tuple(
+        int(x)
+        for x in db.scalars(
+            select(SongLeadArtist.artist_id)
+            .where(SongLeadArtist.song_id == song.id)
+            .order_by(SongLeadArtist.id.asc())
+        ).all()
+    )
+    if lead_ids:
+        return (title, ("leads", lead_ids), dur)
+    return (title, ("anon", int(song.id)), dur)
 
 
 def _duration_pair_ok(a: Optional[int], b: Optional[int]) -> bool:
@@ -165,13 +183,13 @@ def merge_slave_into_master(
 
 def merge_duplicate_songs(db: Session) -> dict:
     """
-    按 (标题规范化、artist_id、时长桶) 分组，组内保留 id 最小为主曲，其余并入。
-    若主曲与待合并曲时长均非空且相差超过 DURATION_TOLERANCE_MS，则跳过该条（不合并）。
+    按 (标题规范化、主艺人/原唱关联、时长桶) 分组，组内保留 id 最小为主曲，其余并入。
+    无主艺人且无 SongLeadArtist 时不跨 song 合并。若主曲与待合并曲时长均非空且相差超过 DURATION_TOLERANCE_MS，则跳过该条（不合并）。
     """
     songs = list(db.scalars(select(Song).order_by(Song.id.asc())).all())
     groups: dict[tuple, list[Song]] = defaultdict(list)
     for s in songs:
-        groups[_song_merge_key(s)].append(s)
+        groups[_song_merge_key(db, s)].append(s)
 
     merged_groups = 0
     merged_slaves = 0

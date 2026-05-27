@@ -1,16 +1,16 @@
 from pathlib import Path
 import io
+import json
 import mimetypes
 import shutil
 import tempfile
-import urllib.error
 import zipfile
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 from botocore.exceptions import ClientError
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
 from urllib.parse import quote
@@ -47,10 +47,10 @@ from app.schemas import (
     SongFileRenameIn,
     SongFileVariantOut,
     SongMergeSelected,
-    SongMetadataAiParseEnabledOut,
-    SongMetadataAiParseIn,
-    SongMetadataAiParseOut,
     SongMetadataUpdate,
+    SongListPageOut,
+    SongLyricsOut,
+    LyricLineOut,
     SongOut,
     LanguageCreate,
     LanguageOut,
@@ -61,15 +61,22 @@ from app.schemas import (
 )
 from app.services import (
     attach_audio_file_to_song,
+    audio_song_files,
     choose_best_file,
+    delete_song_lyric_files,
     effective_is_playable_web,
     get_or_create_album,
     get_or_create_artist,
+    get_song_lyric_file,
+    ingest_lyric_file,
+    parse_lrc_content,
+    read_lyric_file_text,
     relocate_song_files_storage,
     scan_directory,
+    sync_song_file_names_to_title,
+    song_has_lyrics,
 )
-from app.services import SUPPORTED_EXTENSIONS, ingest_file
-from app.dify_workflow import extract_workflow_outputs, normalize_suggestions, run_dify_workflow
+from app.services import LYRIC_EXTENSIONS, LYRIC_MAX_BYTES, SUPPORTED_EXTENSIONS, ingest_file
 from app.song_merge import merge_duplicate_songs, merge_slave_into_master
 from app.storage import S3Storage
 
@@ -111,7 +118,21 @@ def song_file_to_out(song_file: SongFile) -> SongFileOut:
 
 
 def stream_content_type_for_song_file(song_file: SongFile) -> str:
+    """浏览器 <audio> 对 Content-Type 较敏感，需显式映射常见后缀，避免误报 resource not suitable。"""
     fmt = (song_file.format or "").strip().lower().lstrip(".")
+    by_ext = {
+        "mp3": "audio/mpeg",
+        "flac": "audio/flac",
+        "m4a": "audio/mp4",
+        "aac": "audio/aac",
+        "wav": "audio/wav",
+        "ogg": "audio/ogg",
+        "oga": "audio/ogg",
+        "opus": "audio/ogg",
+        "alac": "audio/mp4",
+    }
+    if fmt in by_ext:
+        return by_ext[fmt]
     mime = song_file.mime_type
     if not mime or mime == "application/octet-stream":
         guessed, _ = mimetypes.guess_type(f"x.{fmt}" if fmt else "")
@@ -376,7 +397,7 @@ def zip_song_files_response(db: Session, files: list[SongFile], zip_download_nam
 
 
 def resolve_song_files_for_download(db: Session, song_id: int, formats_param: list[str]) -> list[SongFile]:
-    files_all = list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all())
+    files_all = audio_song_files(list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all()))
     if not files_all:
         return []
     if not formats_param:
@@ -406,7 +427,7 @@ def collect_batch_song_files(db: Session, song_ids: list[int], formats: list[str
         return []
     result: list[SongFile] = []
     for sid in song_ids:
-        files_all = list(db.scalars(select(SongFile).where(SongFile.song_id == sid)).all())
+        files_all = audio_song_files(list(db.scalars(select(SongFile).where(SongFile.song_id == sid)).all()))
         for fmt in sorted(want):
             match = next((x for x in files_all if normalize_audio_format(x.format) == fmt), None)
             if match:
@@ -451,15 +472,33 @@ def set_song_tags(db: Session, song_id: int, tag_ids: list[int]) -> None:
 
 
 def song_file_variants_out(files: list[SongFile]) -> list[SongFileVariantOut]:
+    audio = audio_song_files(files)
     return [
         SongFileVariantOut(file_id=f.id, format=f.format or "")
-        for f in sorted(files, key=lambda x: (x.format or "").lower())
+        for f in sorted(audio, key=lambda x: (x.format or "").lower())
     ]
+
+
+def build_song_lyrics_out(db: Session, song_id: int) -> SongLyricsOut:
+    song_file = get_song_lyric_file(db, song_id)
+    if not song_file:
+        raise HTTPException(status_code=404, detail="该歌曲暂无歌词")
+    try:
+        content = read_lyric_file_text(storage, song_file)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"读取歌词失败：{exc}") from exc
+    parsed = parse_lrc_content(content)
+    return SongLyricsOut(
+        filename=(song_file.original_filename or "").strip() or "lyrics.lrc",
+        content=content,
+        lines=[LyricLineOut(time_ms=line["time_ms"], text=line["text"]) for line in parsed],
+    )
 
 
 def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_name: Optional[str], formats: list[str]) -> SongOut:
     files = list(db.scalars(select(SongFile).where(SongFile.song_id == song.id)).all())
-    best_file = choose_best_file(files) if files else None
+    audio_files = audio_song_files(files)
+    best_file = choose_best_file(audio_files) if audio_files else None
     return SongOut(
         id=song.id,
         title=song.title,
@@ -486,6 +525,7 @@ def build_song_out(db: Session, song: Song, artist_name: Optional[str], album_na
         genre=get_song_genre_name(db, song),
         release_date=song.release_date,
         film_tv=song.film_tv,
+        has_lyrics=song_has_lyrics(db, song.id),
     )
 
 
@@ -526,6 +566,7 @@ def build_song_out_for_file(
         genre=get_song_genre_name(db, song),
         release_date=song.release_date or "",
         film_tv=song.film_tv,
+        has_lyrics=song_has_lyrics(db, song.id),
     )
 
 
@@ -690,6 +731,20 @@ def ensure_schema() -> None:
                         "INSERT INTO _schema_migrations (name) VALUES ('song_file_drop_global_hash_unique_v1')"
                     )
                 )
+            done_album_year = connection.execute(
+                text("SELECT 1 FROM _schema_migrations WHERE name = 'album_drop_year_v1'")
+            ).first()
+            if not done_album_year and "albums" in inspector.get_table_names():
+                album_columns = {col["name"] for col in inspect(engine).get_columns("albums")}
+                if "year" in album_columns:
+                    dialect = connection.dialect.name
+                    if dialect == "sqlite":
+                        connection.execute(text("ALTER TABLE albums DROP COLUMN year"))
+                    elif dialect == "mysql":
+                        connection.execute(text("ALTER TABLE albums DROP COLUMN year"))
+                connection.execute(
+                    text("INSERT INTO _schema_migrations (name) VALUES ('album_drop_year_v1')")
+                )
 
     db = next(get_db())
     try:
@@ -732,7 +787,7 @@ def startup():
     try:
         Base.metadata.create_all(bind=engine)
         ensure_schema()
-        storage.ensure_buckets()
+        storage.ensure_buckets_retry()
     except OperationalError as e:
         orig = getattr(e, "orig", None)
         msg = str(orig) if orig is not None else str(e)
@@ -750,6 +805,23 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/api/__debug/client-log")
+async def client_debug_log(request: Request):
+    body = await request.body()
+    if not body:
+        return {"ok": False}
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        payload = {"raw": body.decode("utf-8", errors="replace")}
+    log_path = Path("/data/debug-front-user-menu.ndjson")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    entry = {**payload, "timestamp": datetime.now(ZoneInfo("UTC")).isoformat()}
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return {"ok": True}
+
+
 @app.get("/library/stats")
 def library_stats(db: Session = Depends(get_db)):
     song_count = db.scalar(select(func.count(Song.id))) or 0
@@ -765,43 +837,6 @@ def index():
 @app.get("/admin")
 def admin_page():
     return FileResponse(static_dir / "admin.html")
-
-
-@app.get("/admin/song-metadata/ai-parse/enabled", response_model=SongMetadataAiParseEnabledOut)
-def song_metadata_ai_parse_enabled():
-    s = get_settings()
-    url_ok = bool((s.dify_workflow_api_url or "").strip())
-    key_ok = bool((s.dify_workflow_api_key or "").strip())
-    return SongMetadataAiParseEnabledOut(enabled=url_ok and key_ok)
-
-
-@app.post("/admin/song-metadata/ai-parse", response_model=SongMetadataAiParseOut)
-def song_metadata_ai_parse(payload: SongMetadataAiParseIn):
-    s = get_settings()
-    api_url = (s.dify_workflow_api_url or "").strip()
-    api_key = (s.dify_workflow_api_key or "").strip()
-    if not api_url or not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="未配置 Dify 工作流：请设置环境变量 DIFY_WORKFLOW_API_URL 与 DIFY_WORKFLOW_API_KEY",
-        )
-    title = (payload.title or "").strip()
-    lead = (payload.lead_artist or "").strip()
-    if not title or not lead:
-        raise HTTPException(status_code=400, detail="歌曲名与原唱均不能为空后才能使用 AI 解析")
-    inputs = {
-        s.dify_workflow_input_title: title,
-        s.dify_workflow_input_lead_artist: lead,
-    }
-    try:
-        raw = run_dify_workflow(api_url=api_url, api_key=api_key, inputs=inputs)
-        outs = extract_workflow_outputs(raw)
-        suggestions = normalize_suggestions(outs)
-    except ValueError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
-    except urllib.error.URLError as e:
-        raise HTTPException(status_code=502, detail=f"调用 Dify 网络错误: {e!s}") from e
-    return SongMetadataAiParseOut(suggestions=suggestions)
 
 
 @app.get("/admin/scan-progress", response_model=ScanProgress)
@@ -900,7 +935,7 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
 
         display_name = upload.filename or tmp_path.name
         try:
-            ok, skip_reason = ingest_file(
+            ok, skip_reason, _song_id = ingest_file(
                 db,
                 storage,
                 tmp_path,
@@ -934,7 +969,7 @@ async def import_directory(files: list[UploadFile] = File(...), db: Session = De
     )
 
 
-@app.get("/songs", response_model=list[SongOut])
+@app.get("/songs", response_model=SongListPageOut)
 def list_songs(
     keyword: Optional[str] = Query(default=None),
     format: Optional[str] = Query(default=None),
@@ -956,6 +991,7 @@ def list_songs(
     limit: int = 50,
     db: Session = Depends(get_db),
 ):
+    library_total = db.scalar(select(func.count(Song.id))) or 0
     query = select(Song, Artist.name, Album.name).outerjoin(Artist, Song.artist_id == Artist.id).outerjoin(Album, Song.album_id == Album.id)
 
     if artists:
@@ -968,7 +1004,7 @@ def list_songs(
             sl_songs = select(SongLanguage.song_id).where(SongLanguage.language_id.in_(language_ids))
             query = query.where(or_(Song.language_id.in_(language_ids), Song.id.in_(sl_songs)))
         else:
-            return []
+            return SongListPageOut(items=[], total=0, library_total=library_total)
     if genre_ids:
         sg_songs = select(SongGenre.song_id).where(SongGenre.genre_id.in_(genre_ids))
         query = query.where(or_(Song.genre_id.in_(genre_ids), Song.id.in_(sg_songs)))
@@ -979,10 +1015,6 @@ def list_songs(
 
     for song, artist_name, album_name in rows:
         files = list(db.scalars(select(SongFile).where(SongFile.song_id == song.id)).all())
-        if not files:
-            continue
-
-        song_formats = sorted({f.format.lower() for f in files})
         tag_names = get_song_tag_names(db, song.id)
         lead_artist_name = get_song_lead_artist_name(db, song)
         chorus_artist_name = get_song_chorus_artist_name(db, song)
@@ -1004,8 +1036,9 @@ def list_songs(
             ]
             if not any(kw in value.lower() for value in values):
                 continue
-        if tag_ids and not set(tag_name_map.values()).issubset(set(tag_names)):
-            continue
+        if tag_ids and tag_name_map:
+            if not (set(tag_name_map.values()) & set(tag_names)):
+                continue
         if lead_artists and not any(name in lead_names for name in lead_artists):
             continue
         if chorus_artists and not any(name in chorus_names for name in chorus_artists):
@@ -1015,7 +1048,15 @@ def list_songs(
         if composers and not any(name in composer_names for name in composers):
             continue
 
-        candidate_files = list(files)
+        if not files:
+            # 保留仅元数据、无音频文件的歌曲；按格式/码率筛选时无法匹配则不出现在列表
+            if format or formats or bitrates or sample_rates:
+                continue
+            result.append(build_song_out(db, song, artist_name, album_name, []))
+            continue
+
+        song_formats = sorted({f.format.lower() for f in audio_song_files(files)})
+        candidate_files = audio_song_files(list(files))
         if format:
             candidate_files = [f for f in candidate_files if f.format and f.format.lower() == format.lower()]
         if formats:
@@ -1055,13 +1096,16 @@ def list_songs(
             "film_tv": item.film_tv or "",
             "tags": tag_text,
             "language": item.language or "",
+            "genre": item.genre or "",
             "lyricists": ", ".join(item.lyricists or []),
             "composers": ", ".join(item.composers or []),
         }
         return mapping.get(sort_by, mapping["created_at"])
 
     result = sorted(result, key=sort_value, reverse=reverse)
-    return result[offset : offset + limit]
+    total = len(result)
+    items = result[offset : offset + limit]
+    return SongListPageOut(items=items, total=total, library_total=library_total)
 
 
 @app.get("/playlists", response_model=list[PlaylistOut])
@@ -1264,7 +1308,60 @@ def get_song(song_id: int, db: Session = Depends(get_db)):
         genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
         film_tv=song.film_tv,
+        has_lyrics=song_has_lyrics(db, song.id),
     )
+
+
+@app.get("/songs/{song_id}/lyrics", response_model=SongLyricsOut)
+def get_song_lyrics(song_id: int, db: Session = Depends(get_db)):
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    return build_song_lyrics_out(db, song_id)
+
+
+@app.post("/songs/{song_id}/lyrics", response_model=SongLyricsOut)
+async def upload_song_lyrics(
+    song_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="未选择文件")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in LYRIC_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="仅支持 .lrc 歌词文件")
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        content = await file.read()
+        if len(content) > LYRIC_MAX_BYTES:
+            raise HTTPException(status_code=400, detail=f"歌词文件不能超过 {LYRIC_MAX_BYTES // 1024}KB")
+        tmp.write(content)
+        tmp.flush()
+        tmp_path = Path(tmp.name)
+    try:
+        try:
+            ingest_lyric_file(db, storage, song_id, tmp_path, original_filename=file.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return build_song_lyrics_out(db, song_id)
+
+
+@app.delete("/songs/{song_id}/lyrics")
+def delete_song_lyrics(song_id: int, db: Session = Depends(get_db)):
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    if not get_song_lyric_file(db, song_id):
+        raise HTTPException(status_code=404, detail="该歌曲暂无歌词")
+    delete_song_lyric_files(db, storage, song_id)
+    db.commit()
+    return {"success": True}
 
 
 @app.put("/songs/{song_id}", response_model=SongDetailOut)
@@ -1273,10 +1370,13 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
 
+    title_changed = False
     if payload.title is not None:
         title = payload.title.strip()
         if not title:
             raise HTTPException(status_code=400, detail="Title cannot be empty")
+        old_title = (song.title or "").strip()
+        title_changed = title != old_title
         song.title = title
 
     current_lead_ids = get_song_lead_artist_ids(db, song)
@@ -1308,10 +1408,11 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         else:
             song.album_id = None
 
-    if payload.duration_ms is not None:
-        if payload.duration_ms < 0:
+    if "duration_ms" in payload.model_dump(exclude_unset=True):
+        duration = payload.duration_ms
+        if duration is not None and duration < 0:
             raise HTTPException(status_code=400, detail="Duration must be >= 0")
-        song.duration_ms = payload.duration_ms
+        song.duration_ms = duration
 
     if payload.tag_ids is not None:
         set_song_tags(db, song.id, payload.tag_ids)
@@ -1349,6 +1450,9 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
     if "film_tv" in payload.model_dump(exclude_unset=True):
         song.film_tv = (payload.film_tv or "").strip() or None
 
+    if title_changed:
+        sync_song_file_names_to_title(db, song)
+
     db.flush()
     relocate_song_files_storage(db, storage, song)
     db.commit()
@@ -1382,6 +1486,7 @@ def update_song(song_id: int, payload: SongMetadataUpdate, db: Session = Depends
         genre_ids=get_song_genre_ids(db, song.id),
         release_date=song.release_date,
         film_tv=song.film_tv,
+        has_lyrics=song_has_lyrics(db, song.id),
     )
 
 
@@ -1679,7 +1784,7 @@ def get_song_play(
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
 
-    files = list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all())
+    files = audio_song_files(list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all()))
     if not files:
         raise HTTPException(status_code=404, detail="No file version for this song")
 
@@ -1737,6 +1842,8 @@ def stream_song_file(song_file_id: int, request: Request, db: Session = Depends(
     song_file = db.scalar(select(SongFile).where(SongFile.id == song_file_id))
     if not song_file:
         raise HTTPException(status_code=404, detail="Song file not found")
+    if (song_file.format or "").strip().lower().lstrip(".") == "lrc":
+        raise HTTPException(status_code=400, detail="歌词文件不可作为音频流播放")
 
     range_header = request.headers.get("range")
     try:

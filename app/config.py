@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Personal Music MVP"
+    app_version: str = "0.0.6"
     database_url: str = "sqlite:///./music.db"
     #: 连接 PostgreSQL/MySQL 时由 database 模块在 connect 事件中设置会话时区（SQLite 见 datetime_util）
     database_timezone: str = "Asia/Shanghai"
@@ -22,13 +23,6 @@ class Settings(BaseSettings):
 
     import_root: str = "/import"
     default_format_priority: str = "flac,alac,m4a,aac,mp3,ogg,wav"
-
-    #: Dify 工作流：POST 完整地址，一般为 …/v1/workflows/run
-    dify_workflow_api_url: str | None = None
-    dify_workflow_api_key: str | None = None
-    #: 与工作流「开始」节点中变量名一致（默认常见命名，可在 .env 覆盖）
-    dify_workflow_input_title: str = "song_title"
-    dify_workflow_input_lead_artist: str = "lead_artist"
 
 
 @lru_cache

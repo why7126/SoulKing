@@ -1,0 +1,1789 @@
+/* SoulKing Admin — 管理后台设计稿（深色 + 紫色强调） */
+
+.admin-app {
+  --adm-bg: #0d0d14;
+  --adm-panel: #161621;
+  --adm-panel-2: #1c1c28;
+  --adm-border: rgba(148, 163, 184, 0.14);
+  --adm-accent: #6c47ff;
+  --adm-accent-hover: #a78bfa;
+  --adm-accent-muted: rgba(124, 77, 255, 0.18);
+  --adm-text: #ffffff;
+  --adm-muted: #94a3b8;
+  --adm-muted-2: #64748b;
+  --adm-success: #10b981;
+  --adm-warn: #f59e0b;
+  --adm-danger: #f87171;
+  --adm-radius: 10px;
+  --adm-radius-sm: 8px;
+  --adm-sidebar-w: 248px;
+  --adm-edit-w: 480px;
+  --adm-header-stats-h: auto;
+  --adm-player-controls-h: 48px;
+  --adm-player-lyrics-h: 24px;
+  --adm-player-pad-v: 8px;
+  --adm-player-total-h: calc(
+    var(--adm-player-pad-v) * 2 + var(--adm-player-controls-h) + var(--adm-player-lyrics-h) + 5px
+  );
+}
+
+.admin-app body,
+body.admin-app,
+body.admin-app.admin-table-body {
+  background: var(--adm-bg);
+  color: var(--adm-text);
+  font-family: Inter, system-ui, sans-serif;
+  padding-bottom: 0;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.admin-app .bg-orb {
+  opacity: 0.1;
+}
+
+.admin-app .app-shell {
+  background: var(--adm-bg);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.admin-app .app-sidebar.adm-sidebar {
+  width: var(--adm-sidebar-w);
+  background: linear-gradient(180deg, #12131c 0%, #0b0c14 45%);
+  border-right: 1px solid var(--adm-border);
+  padding: 0 10px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed {
+  --adm-sidebar-w: var(--sidebar-w-collapsed);
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .app-sidebar {
+  position: relative;
+  z-index: 45;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-brand {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px 10px;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-brand-text {
+  display: none;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-brand-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-nav-item {
+  justify-content: center;
+  padding: 9px 0;
+  font-size: 0;
+  gap: 0;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-nav-item.is-active::before {
+  display: none;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-user-meta {
+  display: none;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-user-row {
+  justify-content: center;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-sidebar-bottom {
+  padding-left: 4px;
+  padding-right: 4px;
+  overflow: visible;
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-user-menu {
+  left: calc(50% - 18px);
+  right: auto;
+  width: max-content;
+  min-width: 160px;
+  bottom: calc(100% + 6px);
+}
+
+.admin-app .app-shell.is-sidebar-collapsed .adm-user-menu-item {
+  white-space: nowrap;
+}
+
+.admin-app .adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 10px 14px;
+  border-bottom: 1px solid var(--adm-border);
+  margin: 0 -10px;
+}
+
+.admin-app .adm-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--adm-radius-sm);
+  overflow: hidden;
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  background: linear-gradient(145deg, rgba(234, 179, 8, 0.12), rgba(0, 0, 0, 0.2));
+  box-shadow: 0 0 20px rgba(234, 179, 8, 0.08);
+}
+
+.admin-app .adm-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.admin-app .adm-brand-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.admin-app .adm-brand-sub {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--adm-muted);
+  font-weight: 500;
+}
+
+.admin-app .adm-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-app .adm-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--adm-radius-sm);
+  background: transparent;
+  color: var(--adm-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+
+.admin-app .adm-nav-ico {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.admin-app .adm-nav-item.active .adm-nav-ico,
+.admin-app .adm-nav-item.is-active .adm-nav-ico {
+  opacity: 1;
+}
+
+.admin-app .adm-nav-meta-sub.hidden {
+  display: none !important;
+}
+
+.admin-app .adm-nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--adm-text);
+}
+
+.admin-app .adm-nav-item.active,
+.admin-app .adm-nav-item.is-active {
+  background: var(--adm-accent-muted);
+  color: var(--adm-accent-hover);
+}
+
+.admin-app .adm-nav-item.active::before,
+.admin-app .adm-nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--adm-accent);
+}
+
+.admin-app .adm-nav-item.is-placeholder {
+  opacity: 0.55;
+}
+
+.admin-app .adm-sidebar-bottom {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 12px 8px 14px;
+  border-top: 1px solid var(--adm-border);
+  position: relative;
+}
+
+.admin-app .adm-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-app .adm-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--adm-accent), #6366f1);
+  flex-shrink: 0;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.admin-app .adm-user-avatar:hover {
+  border-color: rgba(108, 71, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.15);
+}
+
+.admin-app .adm-user-avatar[aria-expanded="true"] {
+  border-color: var(--adm-accent-hover);
+  box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.25);
+}
+
+.admin-app .adm-user-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-app .adm-user-meta strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.admin-app .adm-user-meta span {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-muted);
+  line-height: 1.3;
+}
+
+.admin-app .adm-user-menu {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: calc(100% + 6px);
+  padding: 6px;
+  border-radius: var(--adm-radius-sm);
+  background: var(--adm-panel-2);
+  border: 1px solid var(--adm-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-app .adm-user-menu.hidden {
+  display: none !important;
+}
+
+.admin-app .adm-user-menu-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-text);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.admin-app .adm-user-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-app .adm-user-menu-item:last-child {
+  color: var(--adm-danger);
+}
+
+.admin-app .adm-user-menu-item:last-child:hover {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.admin-app .app-admin-main-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-app .admin-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.admin-app .admin-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-app .admin-studio-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 页头：标题 + 统计卡（单行紧凑） */
+.admin-app .adm-page-header {
+  flex-shrink: 0;
+  padding: 10px 20px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--adm-border);
+  min-height: 0;
+}
+
+.admin-app .adm-page-head-text {
+  flex-shrink: 0;
+}
+
+.admin-app .adm-page-head-text h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-app .adm-page-head-text p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-stats-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.admin-app .adm-stat-card {
+  min-width: 108px;
+  padding: 8px 10px;
+  border-radius: var(--adm-radius-sm);
+  background: var(--adm-panel);
+  border: 1px solid var(--adm-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.admin-app .adm-stat-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-app .adm-stat-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--adm-border);
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-stat-icon--warn {
+  color: var(--adm-danger);
+  border-color: rgba(248, 113, 113, 0.25);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.admin-app .adm-stat-card--task .adm-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.admin-app .adm-stat-card--task {
+  min-width: 140px;
+}
+
+.admin-app .adm-stat-label {
+  font-size: 10px;
+  color: var(--adm-muted);
+  margin: 0 0 2px;
+  white-space: nowrap;
+}
+
+.admin-app .adm-stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.admin-app .adm-stat-delta {
+  font-size: 10px;
+  margin-top: 2px;
+  color: var(--adm-success);
+  white-space: nowrap;
+}
+
+.admin-app .adm-stat-delta.is-down {
+  color: var(--adm-danger);
+}
+
+.admin-app .adm-task-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.admin-app .adm-task-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--adm-accent), #a855f7);
+}
+
+/* 操作区：搜索 + 按钮同一行，筛选次行 */
+.admin-app .adm-controls {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--adm-border);
+  background: rgba(13, 13, 20, 0.5);
+}
+
+.admin-app .adm-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  min-width: 0;
+}
+
+.admin-app .adm-toolbar .admin-music-actions,
+.admin-app .adm-toolbar .admin-music-actions-left,
+.admin-app .adm-toolbar .admin-music-actions-right {
+  margin-top: 0 !important;
+  flex-wrap: nowrap !important;
+}
+
+.admin-app .adm-search-wrap {
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: none;
+  position: relative;
+}
+
+.admin-app .adm-search-wrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--adm-muted-2);
+  pointer-events: none;
+}
+
+.admin-app .adm-search-wrap input {
+  width: 100%;
+  height: 34px;
+  padding: 0 56px 0 36px;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.admin-app .adm-search-wrap .search-clear-btn {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--adm-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  z-index: 2;
+}
+
+.admin-app .adm-search-wrap input:focus {
+  border-color: rgba(124, 77, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.12);
+}
+
+.admin-app .adm-search-kbd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--adm-muted-2);
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--adm-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.admin-app .adm-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-app .adm-toolbar-filters {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--adm-border);
+}
+
+.admin-app .adm-filters-panel {
+  padding: 0 20px 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.admin-app .adm-filters-panel.hidden {
+  display: none !important;
+}
+
+.admin-app .adm-filters-panel .adm-filters {
+  padding: 8px 0 0;
+}
+
+.admin-app .adm-toolbar-batch {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--adm-border);
+}
+
+.admin-app .adm-toolbar-batch:empty,
+.admin-app .adm-toolbar-batch:not(:has(button:not(.hidden))) {
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.admin-app .btn-adm-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  height: 34px;
+  box-sizing: border-box;
+  border-radius: var(--adm-radius-sm);
+  border: none;
+  background: var(--adm-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.admin-app .btn-adm-primary:hover {
+  background: var(--adm-accent-hover);
+}
+
+.admin-app .btn-adm-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  height: 34px;
+  box-sizing: border-box;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.admin-app .btn-adm-secondary:hover {
+  border-color: rgba(124, 77, 255, 0.35);
+}
+
+.admin-app .btn-adm-ghost {
+  padding: 6px 10px;
+  height: 34px;
+  box-sizing: border-box;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--adm-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.admin-app .btn-adm-ghost:hover {
+  color: var(--adm-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 筛选行（展开面板内） */
+.admin-app .adm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.admin-app .adm-filter-select {
+  min-width: 88px;
+  height: 30px;
+  padding: 0 26px 0 8px;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  font-size: 12px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.admin-app .adm-filters .searchable-select {
+  min-width: 108px;
+  max-width: 160px;
+  flex: 1 1 108px;
+}
+
+.admin-app .adm-filters .searchable-select-trigger {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 26px 0 8px;
+  font-size: 12px;
+  border-radius: var(--adm-radius-sm);
+  border-color: var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+}
+
+.admin-app .adm-filters .searchable-select-trigger:hover,
+.admin-app .adm-filters .searchable-select-trigger:focus {
+  border-color: rgba(108, 71, 255, 0.45);
+  background: rgba(108, 71, 255, 0.08);
+}
+
+.admin-app .adm-filters .searchable-select-menu {
+  min-width: 200px;
+  max-width: 280px;
+}
+
+/* 主工作区：表格 + 右侧面板 */
+.admin-app .adm-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.admin-app .adm-main-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-app .adm-table-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 0 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.admin-app .adm-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.admin-app .adm-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+
+.admin-app .adm-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-app .adm-songs-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  --adm-sticky-bg: var(--adm-bg);
+  --adm-sticky-bg-hover: #12121c;
+  --adm-sticky-bg-active: #1f1a3a;
+}
+
+/* 14 列 + 勾选/歌曲/操作：保证列总宽超出容器时出现横向滚动 */
+.admin-app #admin-page-music .adm-songs-table {
+  min-width: 1360px;
+  --adm-sticky-check-width: 48px;
+  --adm-sticky-title-width: 180px;
+  --adm-sticky-bg-playing: #231e3b;
+  --adm-sticky-bg-selected: #181924;
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody {
+  isolation: isolate;
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody td {
+  position: relative;
+  z-index: 0;
+  background-color: var(--adm-sticky-bg);
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th:not(.col-check):not(.col-title):not(.col-actions) {
+  z-index: 1;
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th.col-check,
+.admin-app #admin-page-music .adm-songs-table tbody td.col-check {
+  position: sticky;
+  left: 0;
+  z-index: 11;
+  width: var(--adm-sticky-check-width);
+  min-width: var(--adm-sticky-check-width);
+  max-width: var(--adm-sticky-check-width);
+  box-sizing: border-box;
+  background-color: var(--adm-sticky-bg);
+  background-clip: padding-box;
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th.col-title,
+.admin-app #admin-page-music .adm-songs-table tbody td.col-title {
+  position: sticky;
+  left: var(--adm-sticky-check-width);
+  z-index: 12;
+  width: var(--adm-sticky-title-width);
+  min-width: var(--adm-sticky-title-width);
+  max-width: var(--adm-sticky-title-width);
+  box-sizing: border-box;
+  background-color: var(--adm-sticky-bg);
+  background-clip: padding-box;
+  box-shadow: 6px 0 14px -4px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th.col-check {
+  z-index: 21;
+  background-color: var(--adm-bg);
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th.col-title {
+  z-index: 22;
+  background-color: var(--adm-bg);
+}
+
+body.admin-app #admin-page-music .adm-songs-table.admin-table thead th.col-actions,
+body.admin-app #admin-page-music .adm-songs-table.admin-table tbody td.col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 13;
+  min-width: 52px;
+  width: 52px;
+  box-sizing: border-box;
+  background-color: var(--adm-sticky-bg);
+  background-clip: padding-box;
+  box-shadow: -6px 0 14px -4px rgba(0, 0, 0, 0.45);
+}
+
+.admin-app #admin-page-music .adm-songs-table thead th.col-actions {
+  z-index: 25;
+  background-color: var(--adm-bg);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr:hover {
+  background: transparent;
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr:hover td {
+  background-color: var(--adm-sticky-bg-hover);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-playing {
+  background: transparent;
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-playing td {
+  background-color: var(--adm-sticky-bg-playing);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-active {
+  background: transparent;
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-active td {
+  background-color: var(--adm-sticky-bg-selected);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-active:not(.is-playing) td.col-check {
+  box-shadow: inset 3px 0 0 var(--adm-accent);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-playing:hover td {
+  background-color: var(--adm-sticky-bg-playing);
+}
+
+.admin-app #admin-page-music .adm-songs-table tbody tr.is-active:not(.is-playing):hover td {
+  background-color: var(--adm-sticky-bg-selected);
+}
+
+.admin-app .adm-songs-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--adm-bg);
+  background-clip: padding-box;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--adm-muted);
+  border-bottom: 1px solid var(--adm-border);
+  white-space: nowrap;
+}
+
+.admin-app .adm-songs-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--adm-border);
+  vertical-align: middle;
+}
+
+.admin-app .adm-songs-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.admin-app .adm-songs-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.admin-app .adm-actions-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.admin-app #admin-page-music .admin-studio-root {
+  padding-bottom: var(--adm-player-total-h);
+  box-sizing: border-box;
+}
+
+.admin-app #admin-page-music .adm-table-scroll {
+  padding-bottom: 12px;
+}
+
+.admin-app .adm-song-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-app .adm-song-cell strong {
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.admin-app .adm-song-cell span {
+  font-size: 11px;
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.admin-app .adm-meta-bar track {
+  display: none;
+}
+
+.admin-app .adm-meta-progress {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  max-width: 80px;
+}
+
+.admin-app .adm-meta-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--adm-accent), #a855f7);
+}
+
+.admin-app .adm-meta-pct {
+  font-size: 11px;
+  color: var(--adm-muted);
+  min-width: 32px;
+}
+
+.admin-app .adm-status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-app .adm-status-pill--ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--adm-success);
+}
+
+.admin-app .adm-status-pill--warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--adm-warn);
+}
+
+.admin-app .adm-status-pill--err {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--adm-danger);
+}
+
+.admin-app .adm-cover-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--adm-panel-2);
+  border: 1px solid var(--adm-border);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  color: var(--adm-muted);
+  overflow: hidden;
+}
+
+.admin-app .adm-cover-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-app .adm-icon-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.admin-app .adm-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--adm-text);
+}
+
+/* 表底 */
+.admin-app .adm-table-footer {
+  flex-shrink: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--adm-border);
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(11, 12, 20, 0.6);
+}
+
+.admin-app .adm-list-total {
+  font-size: 13px;
+  color: var(--adm-muted);
+  margin: 0;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  text-align: left;
+}
+
+.admin-app .adm-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.admin-app .adm-page-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.admin-app .adm-page-btn:hover:not(:disabled) {
+  border-color: rgba(124, 77, 255, 0.4);
+  color: var(--adm-text);
+}
+
+.admin-app .adm-page-btn.is-active {
+  background: var(--adm-accent-muted);
+  border-color: rgba(124, 77, 255, 0.5);
+  color: var(--adm-accent-hover);
+}
+
+.admin-app .adm-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.admin-app .adm-page-size {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  font-size: 12px;
+}
+
+/* 右侧编辑面板 */
+.admin-app .admin-edit-panel {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-left: 1px solid transparent;
+  background: var(--adm-panel);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.22s ease, border-color 0.22s;
+}
+
+.admin-app #admin-page-music .admin-edit-panel.is-open {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: var(--adm-player-total-h);
+  width: var(--adm-edit-w);
+  z-index: 30;
+  border-left-color: var(--adm-border);
+  min-height: 0;
+}
+
+.admin-app #admin-page-music.is-edit-drawer-open .admin-studio-root {
+  margin-right: var(--adm-edit-w);
+}
+
+.admin-app .admin-edit-panel .drawer-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-app .admin-edit-panel .drawer-head {
+  flex-shrink: 0;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--adm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-app .admin-edit-panel .drawer-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.admin-app .admin-edit-panel .drawer-body-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.admin-app .admin-edit-panel .drawer-footer {
+  flex-shrink: 0;
+  padding: 14px 18px;
+  border-top: 1px solid var(--adm-border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-app .admin-edit-panel .form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.admin-app .adm-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.admin-app .adm-form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.admin-app .variant-section-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.admin-app .adm-edit-formats-readonly {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.admin-app .adm-edit-formats-readonly .muted {
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-media-field {
+  margin-top: 14px;
+}
+
+.admin-app .adm-media-field > span {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-muted);
+  margin-bottom: 6px;
+}
+
+.admin-app .adm-media-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel-2);
+}
+
+.admin-app .adm-file-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--adm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-app .adm-cover-edit {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: var(--adm-panel);
+  border: 1px solid var(--adm-border);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  color: var(--adm-muted);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.admin-app .adm-cover-edit img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-app .btn-adm-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.admin-app .tag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.admin-app .tag-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.admin-app .tag-options label:has(input:checked) {
+  background: var(--adm-accent-muted);
+  border-color: rgba(108, 71, 255, 0.45);
+  color: var(--adm-accent-hover);
+}
+
+.admin-app .admin-edit-panel .form-field > span {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-muted);
+  margin-bottom: 4px;
+}
+
+.admin-app .admin-edit-panel input:not([type="checkbox"]):not([type="hidden"]),
+.admin-app .admin-edit-panel select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel-2);
+  color: var(--adm-text);
+  font-size: 13px;
+}
+
+/* 编辑抽屉 multi-select：选项列表对齐（勿让文本框样式作用于 checkbox） */
+.admin-app .admin-edit-panel .multi-select-menu {
+  min-width: 200px;
+}
+
+.admin-app .adm-form-grid-3 .multi-select-menu {
+  min-width: 220px;
+}
+
+.admin-app .admin-edit-panel .multi-select-menu .multi-select-meta-hint {
+  padding: 6px 10px 4px;
+  margin: 0;
+}
+
+.admin-app .admin-edit-panel .multi-select-menu .multi-select-meta-row {
+  padding: 8px 10px;
+  margin: 4px 0 6px;
+}
+
+.admin-app .admin-edit-panel .multi-select-menu .artist-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.admin-app .admin-edit-panel .multi-select-menu .artist-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex: 0 0 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  box-sizing: border-box;
+  cursor: pointer;
+  accent-color: var(--adm-accent);
+}
+
+.admin-app .admin-edit-panel .multi-select-menu .artist-option span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-app .adm-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.admin-app .adm-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--adm-accent-muted);
+  color: var(--adm-accent-hover);
+  font-size: 12px;
+}
+
+.admin-app .scan-progress-wrap {
+  margin: 0 20px 8px;
+  padding: 8px 12px;
+  border-radius: var(--adm-radius);
+  background: var(--adm-panel);
+  border: 1px solid var(--adm-border);
+}
+
+.admin-app #admin-page-music .panel {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.admin-app #admin-page-music .admin-toolbar-panel {
+  display: contents;
+}
+
+/* 列表滚动容器须参与 flex 列布局，不可用 display: contents */
+.admin-app #admin-page-music .adm-table-scroll.admin-table-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* 新列表结构使用 .adm-table-scroll，隔离 styles.css 中旧 .admin-table-wrap 规则 */
+body.admin-app #admin-page-music .adm-songs-table.admin-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.admin-app .adm-hidden-filters {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+
+/* 歌曲管理页底部 Studio 播放器 */
+.admin-app #adminStudioPlayer.studio-player {
+  position: fixed;
+  left: var(--adm-sidebar-w);
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  padding: var(--adm-player-pad-v) 20px;
+  border-top: 1px solid var(--adm-border);
+  background: rgba(13, 13, 20, 0.96);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: left 0.2s ease;
+  box-shadow: none;
+}
+
+.admin-app #adminStudioPlayer .studio-player-row--controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--adm-player-controls-h);
+  flex-wrap: wrap;
+}
+
+.admin-app #adminStudioPlayer .studio-player-row--lyrics {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--adm-player-lyrics-h);
+  padding: 0 4px;
+}
+
+.admin-app #adminStudioPlayer .studio-player-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 1 minmax(140px, 220px);
+}
+
+.admin-app #adminStudioPlayer .studio-player-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #334155, #1e293b);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.admin-app #adminStudioPlayer .studio-player-meta {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.admin-app #adminStudioPlayer .studio-player-meta .t {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-app #adminStudioPlayer .studio-player-meta .a {
+  font-size: 11px;
+  color: var(--adm-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-app #adminStudioPlayer .studio-player-next {
+  font-size: 10px;
+  color: var(--adm-muted-2);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-app #adminStudioPlayer .studio-player-next:empty {
+  display: none;
+}
+
+.admin-app #adminStudioPlayer .studio-player-mid {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-app #adminStudioPlayer .studio-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.admin-app #adminStudioPlayer .studio-transport button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  box-sizing: border-box;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+
+.admin-app #adminStudioPlayer .studio-transport button[data-role="playpause"] {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(145deg, var(--adm-accent), #7c3aed);
+  border: none;
+  box-shadow: 0 6px 18px rgba(108, 71, 255, 0.32);
+  font-size: 16px;
+}
+
+.admin-app #adminStudioPlayer .studio-play-mode-select {
+  height: 32px;
+  min-width: 100px;
+  padding: 0 26px 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.admin-app #adminStudioPlayer .studio-player-mid .studio-progress-row {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-app #adminStudioPlayer .studio-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--adm-muted);
+  width: 36px;
+  flex-shrink: 0;
+}
+
+.admin-app #adminStudioPlayer .studio-progress-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-app #adminStudioPlayer .studio-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--adm-accent), #a78bfa);
+}
+
+.admin-app #adminStudioPlayer .sk-player-wave {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.admin-app #adminStudioPlayer .studio-lyric-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: var(--adm-player-lyrics-h);
+  color: var(--adm-muted);
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-app #adminStudioPlayer .studio-player-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.admin-app #adminStudioPlayer .studio-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 120px;
+}
+
+.admin-app #adminStudioPlayer .studio-volume input[type="range"] {
+  width: 80px;
+  accent-color: var(--adm-accent);
+}
+
+.admin-app #adminStudioPlayer audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .admin-app #adminStudioPlayer .studio-player-row--controls {
+    gap: 8px;
+  }
+
+  .admin-app #adminStudioPlayer .studio-player-left {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .admin-app #adminStudioPlayer .studio-player-mid {
+    flex: 1 1 100%;
+  }
+
+  .admin-app #adminStudioPlayer .studio-player-right {
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
+}
+
+.admin-app .admin-subpage-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+}
+
+.admin-app .admin-subpage-wrap .panel {
+  background: var(--adm-panel);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius);
+}
+
+/* 兼容旧组件 */
+.admin-app .btn.btn-primary {
+  background: var(--adm-accent);
+  border-color: var(--adm-accent);
+  color: #fff;
+}
+
+.admin-app .btn.btn-outline {
+  border-color: var(--adm-border);
+  background: var(--adm-panel);
+  color: var(--adm-text);
+}
+
+.admin-app .drawer-overlay.hidden {
+  display: none !important;
+}
+
+.admin-app .edit-drawer-panel--legacy {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  .admin-app .adm-toolbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .admin-app .adm-toolbar-actions {
+    order: 2;
+  }
+
+  .admin-app .adm-toolbar-filters {
+    order: 3;
+    margin-left: auto;
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .admin-app .adm-search-wrap {
+    order: 1;
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-app .adm-page-header {
+    flex-wrap: wrap;
+  }
+
+  .admin-app .adm-stats-row {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1100px) {
+  .admin-app #admin-page-music .admin-edit-panel.is-open {
+    width: min(100vw, var(--adm-edit-w));
+    z-index: 200;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .admin-app #admin-page-music.is-edit-drawer-open .admin-studio-root {
+    margin-right: min(100vw, var(--adm-edit-w));
+  }
+}

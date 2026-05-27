@@ -1,5 +1,6 @@
 import hashlib
 import mimetypes
+import re
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
@@ -13,13 +14,28 @@ from app.models import Album, Artist, Language, ScanJob, Song, SongFile, SongLea
 from app.storage import S3Storage
 
 SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg", ".alac", ".ape"}
+LYRIC_EXTENSIONS = {".lrc"}
 LOSSLESS_EXTENSIONS = {".flac", ".wav", ".alac", ".ape"}
+LYRIC_MAX_BYTES = 512 * 1024
+
+_LRC_TIME_TAG_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]")
 
 # 浏览器试听能力以格式为准（与入库时 is_playable_web 一致），避免历史数据中 FLAC 等仍为 False 导致无法播放
 BROWSER_PLAYABLE_FORMATS = frozenset({"mp3", "m4a", "aac", "ogg", "wav", "flac"})
 
 
+def is_lyric_song_file(song_file: SongFile) -> bool:
+    fmt = (song_file.format or "").strip().lower().lstrip(".")
+    return fmt == "lrc"
+
+
+def audio_song_files(files: list[SongFile]) -> list[SongFile]:
+    return [f for f in files if not is_lyric_song_file(f)]
+
+
 def effective_is_playable_web(song_file: SongFile) -> bool:
+    if is_lyric_song_file(song_file):
+        return False
     fmt = (song_file.format or "").strip().lower().lstrip(".")
     if fmt in BROWSER_PLAYABLE_FORMATS:
         return True
@@ -190,6 +206,35 @@ def relocate_song_files_storage(db: Session, storage: S3Storage, song: Song) -> 
     return moved
 
 
+def sync_song_file_names_to_title(db: Session, song: Song) -> int:
+    """
+    将歌曲下全部关联文件的 original_filename 统一为 sanitize(title) + 扩展名。
+    歌词为 .lrc；音频扩展名与 song_file.format 一致。返回更新的文件条数。
+    """
+    stem = sanitize_path_segment(song.title, "untitled", 180)
+    if not stem or "/" in stem or "\\" in stem:
+        return 0
+    files = list(db.scalars(select(SongFile).where(SongFile.song_id == song.id).order_by(SongFile.id.asc())).all())
+    updated = 0
+    for sf in files:
+        fmt = (sf.format or "").strip().lower().lstrip(".")
+        if not fmt:
+            continue
+        if fmt == "lrc":
+            new_name = f"{stem}.lrc"
+        else:
+            new_name = f"{stem}.{fmt}"
+        if "/" in new_name or "\\" in new_name or new_name in (".", ".."):
+            continue
+        if not Path(new_name).stem.strip():
+            continue
+        bounded = new_name[:512]
+        if sf.original_filename != bounded:
+            sf.original_filename = bounded
+            updated += 1
+    return updated
+
+
 def extract_metadata(path: Path) -> dict:
     audio = MutagenFile(path)
     tags = audio.tags if audio else {}
@@ -304,19 +349,19 @@ def locate_or_create_song_for_ingest(
     """
     扫描/添加歌曲入库：若已存在相同歌名 + 相同主艺人（artist_id）的 Song，则复用，仅追加音频；
     否则新建 Song（与仅按「时长窗口」匹配的 locate_or_create_song 不同）。
+
+    当主艺人未解析（artist_id 为空）时，**不与**「仅同歌名且无 song.artist_id」的已有行合并，避免不同歌手同名曲被收成一首
+    （例如标签里艺人不同但库中均未建档、或此前扫描未写入主艺人）。
     """
     title_clean = (title or "").strip() or "Unknown"
-    q = select(Song).where(func.lower(Song.title) == title_clean.lower())
     if artist_id is not None:
-        q = q.where(Song.artist_id == artist_id)
-    else:
-        q = q.where(Song.artist_id.is_(None))
-    candidates = list(db.scalars(q.order_by(Song.id.asc())).all())
-    if candidates:
-        song = _pick_song_for_ingest(candidates, duration_ms)
-        if not song.album_id and album_id:
-            song.album_id = album_id
-        return song
+        q = select(Song).where(func.lower(Song.title) == title_clean.lower(), Song.artist_id == artist_id)
+        candidates = list(db.scalars(q.order_by(Song.id.asc())).all())
+        if candidates:
+            song = _pick_song_for_ingest(candidates, duration_ms)
+            if not song.album_id and album_id:
+                song.album_id = album_id
+            return song
 
     default_language = db.scalar(select(Language).where(func.lower(Language.name) == "普通话"))
     song = Song(
@@ -332,17 +377,223 @@ def locate_or_create_song_for_ingest(
 
 
 def choose_best_file(files: list[SongFile]) -> SongFile:
+    audio = audio_song_files(files)
+    if not audio:
+        raise ValueError("没有可用的音频文件")
     settings = get_settings()
     priorities = [p.strip().lower() for p in settings.default_format_priority.split(",") if p.strip()]
     priority_map = {fmt: idx for idx, fmt in enumerate(priorities)}
 
     def sort_key(song_file: SongFile):
-        rank = priority_map.get(song_file.format.lower(), 999)
+        rank = priority_map.get((song_file.format or "").lower(), 999)
         bitrate = song_file.bitrate or 0
         sample_rate = song_file.sample_rate or 0
         return (rank, -bitrate, -sample_rate)
 
-    return sorted(files, key=sort_key)[0]
+    return sorted(audio, key=sort_key)[0]
+
+
+def decode_text_bytes(data: bytes) -> str:
+    for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk", "latin-1"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def _lrc_timestamp_to_ms(minutes: int, seconds: int, frac: Optional[str]) -> int:
+    ms = minutes * 60_000 + seconds * 1_000
+    if not frac:
+        return ms
+    digits = frac.strip()
+    if len(digits) == 2:
+        return ms + int(digits) * 10
+    if len(digits) == 3:
+        return ms + int(digits)
+    return ms + int(digits.ljust(2, "0")[:2]) * 10
+
+
+def parse_lrc_content(text: str) -> list[dict]:
+    """解析 LRC 为 [{time_ms, text}, ...]，按 time_ms 升序。"""
+    entries: list[dict] = []
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        matches = list(_LRC_TIME_TAG_RE.finditer(line))
+        if not matches:
+            continue
+        lyric_text = _LRC_TIME_TAG_RE.sub("", line).strip()
+        for m in matches:
+            entries.append(
+                {
+                    "time_ms": _lrc_timestamp_to_ms(int(m.group(1)), int(m.group(2)), m.group(3)),
+                    "text": lyric_text,
+                }
+            )
+    entries.sort(key=lambda x: x["time_ms"])
+    return entries
+
+
+def get_song_lyric_file(db: Session, song_id: int) -> Optional[SongFile]:
+    rows = list(
+        db.scalars(
+            select(SongFile)
+            .where(SongFile.song_id == song_id, func.lower(SongFile.format) == "lrc")
+            .order_by(SongFile.id.desc())
+        ).all()
+    )
+    return rows[0] if rows else None
+
+
+def song_has_lyrics(db: Session, song_id: int) -> bool:
+    return get_song_lyric_file(db, song_id) is not None
+
+
+def read_lyric_file_text(storage: S3Storage, song_file: SongFile) -> str:
+    if not song_file.object_key or not song_file.object_key.strip():
+        raise ValueError("歌词文件缺少存储路径")
+    obj = storage.get_object(song_file.object_key.strip())
+    data = obj["Body"].read()
+    if len(data) > LYRIC_MAX_BYTES:
+        raise ValueError("歌词文件过大")
+    return decode_text_bytes(data)
+
+
+def derive_lyric_original_filename(db: Session, song_id: int) -> str:
+    """歌词展示名：与试听主音频 stem 一致，扩展名为 .lrc。"""
+    files = list(db.scalars(select(SongFile).where(SongFile.song_id == song_id)).all())
+    audio_files = audio_song_files(files)
+    if not audio_files:
+        return "lyrics.lrc"
+    try:
+        best = choose_best_file(audio_files)
+    except ValueError:
+        return "lyrics.lrc"
+    raw_name = (best.original_filename or f"audio.{best.format or 'bin'}").strip()
+    stem = Path(raw_name).stem.strip() or "audio"
+    return f"{stem}.lrc"
+
+
+def delete_song_lyric_files(db: Session, storage: S3Storage, song_id: int) -> None:
+    for sf in list(
+        db.scalars(select(SongFile).where(SongFile.song_id == song_id, func.lower(SongFile.format) == "lrc")).all()
+    ):
+        if sf.object_key and sf.object_key.strip():
+            try:
+                storage.delete_object(sf.object_key.strip())
+            except Exception:
+                pass
+        db.delete(sf)
+    db.flush()
+
+
+def ingest_lyric_file(
+    db: Session,
+    storage: S3Storage,
+    song_id: int,
+    path: Path,
+    *,
+    original_filename: Optional[str] = None,
+) -> SongFile:
+    if not path.is_file():
+        raise ValueError("歌词文件不存在或无法读取")
+    ext = path.suffix.lower()
+    if ext not in LYRIC_EXTENSIONS:
+        raise ValueError("仅支持 .lrc 歌词文件")
+    file_size = path.stat().st_size
+    if file_size > LYRIC_MAX_BYTES:
+        raise ValueError(f"歌词文件不能超过 {LYRIC_MAX_BYTES // 1024}KB")
+    if file_size == 0:
+        raise ValueError("歌词文件为空")
+
+    song = db.scalar(select(Song).where(Song.id == song_id))
+    if not song:
+        raise ValueError("歌曲不存在")
+
+    display_name = derive_lyric_original_filename(db, song_id)
+    digest = sha256_file(path)
+
+    dup = db.scalar(select(SongFile).where(SongFile.sha256 == digest, SongFile.file_size == file_size))
+    if dup and dup.song_id != song_id:
+        raise ValueError(duplicate_content_skip_reason(db, dup))
+
+    delete_song_lyric_files(db, storage, song_id)
+
+    content_type = "text/plain"
+    phantom = SongFile(
+        song_id=song.id,
+        object_key="",
+        original_filename=display_name[:512],
+        format="lrc",
+        mime_type=content_type,
+        bitrate=None,
+        sample_rate=None,
+        bit_depth=None,
+        channels=None,
+        file_size=file_size,
+        sha256=digest,
+        is_lossless=False,
+        is_playable_web=False,
+    )
+    object_key = compute_music_object_key(db, song, phantom)
+    storage.upload_file(str(path), object_key, content_type=content_type)
+
+    song_file = SongFile(
+        song_id=song.id,
+        object_key=object_key,
+        original_filename=display_name[:512],
+        format="lrc",
+        mime_type=content_type,
+        bitrate=None,
+        sample_rate=None,
+        bit_depth=None,
+        channels=None,
+        file_size=file_size,
+        sha256=digest,
+        is_lossless=False,
+        is_playable_web=False,
+    )
+    db.add(song_file)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        try:
+            storage.delete_object(object_key)
+        except Exception:
+            pass
+        raise ValueError("歌词入库失败（唯一约束冲突）") from None
+    db.refresh(song_file)
+    return song_file
+
+
+def find_sidecar_lrc_path(audio_path: Path) -> Optional[Path]:
+    direct = audio_path.with_suffix(".lrc")
+    if direct.is_file():
+        return direct
+    parent = audio_path.parent
+    stem_lower = audio_path.stem.lower()
+    if not parent.is_dir():
+        return None
+    for candidate in parent.iterdir():
+        if candidate.is_file() and candidate.suffix.lower() == ".lrc" and candidate.stem.lower() == stem_lower:
+            return candidate
+    return None
+
+
+def try_attach_sidecar_lrc(db: Session, storage: S3Storage, audio_path: Path, song_id: int) -> tuple[bool, Optional[str]]:
+    lrc_path = find_sidecar_lrc_path(audio_path)
+    if not lrc_path:
+        return True, None
+    try:
+        ingest_lyric_file(db, storage, song_id, lrc_path, original_filename=lrc_path.name)
+        return True, None
+    except ValueError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        return False, str(exc).strip() or type(exc).__name__
 
 
 def attach_audio_file_to_song(
@@ -444,22 +695,23 @@ def ingest_file(
     path: Path,
     *,
     source_filename: Optional[str] = None,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, Optional[str], Optional[int]]:
     """
     扫描/导入单文件：若 (sha256, file_size) 已在 song_files 中存在则跳过；
     否则若已有相同歌名 + 主艺人的 Song 则只追加文件，否则新建 Song。
     不入库自动新建艺人：仅当标签中的艺人在库中已存在时才关联主艺人，否则主艺人为空（可在后台再编辑）。
 
-    返回 (True, None) 表示成功；(False, reason) 表示跳过或失败（reason 为人类可读说明）。
+    返回 (True, None, song_id) 表示成功；(False, reason, None) 表示跳过或失败（reason 为人类可读说明）。
     """
     object_key_uploaded: Optional[str] = None
+    song_id_result: Optional[int] = None
     try:
         file_size = path.stat().st_size
         digest = sha256_file(path)
 
         exists = db.scalar(select(SongFile).where(SongFile.sha256 == digest, SongFile.file_size == file_size))
         if exists:
-            return False, duplicate_content_skip_reason(db, exists)
+            return False, duplicate_content_skip_reason(db, exists), None
 
         metadata = extract_metadata(path)
         source_name = (source_filename or path.name).strip() or path.name
@@ -516,7 +768,7 @@ def ingest_file(
         )
         db.add(song_file)
         db.commit()
-        return True, None
+        return True, None, song.id
     except IntegrityError:
         db.rollback()
         if object_key_uploaded:
@@ -529,10 +781,10 @@ def ingest_file(
             dg = sha256_file(path)
             ex = db.scalar(select(SongFile).where(SongFile.sha256 == dg, SongFile.file_size == rs))
             if ex:
-                return False, duplicate_content_skip_reason(db, ex)
+                return False, duplicate_content_skip_reason(db, ex), None
         except Exception:
             pass
-        return False, "该音频内容已在曲库中存在（唯一约束冲突），无法重复添加"
+        return False, "该音频内容已在曲库中存在（唯一约束冲突），无法重复添加", None
     except Exception as e:
         db.rollback()
         if object_key_uploaded:
@@ -541,7 +793,7 @@ def ingest_file(
             except Exception:
                 pass
         msg = str(e).strip() if e else ""
-        return False, msg or type(e).__name__
+        return False, msg or type(e).__name__, None
 
 
 def scan_directory(db: Session, storage: S3Storage, root: Path, progress: dict = None) -> ScanJob:
@@ -567,11 +819,21 @@ def scan_directory(db: Session, storage: S3Storage, root: Path, progress: dict =
         if progress is not None:
             progress["scanned_count"] = scanned
 
-        ok, skip_reason = ingest_file(db, storage, path)
+        ok, skip_reason, song_id = ingest_file(db, storage, path)
         if ok:
             added += 1
             if progress is not None:
                 progress["added_count"] = added
+            if song_id is not None:
+                sidecar_ok, sidecar_reason = try_attach_sidecar_lrc(db, storage, path, song_id)
+                if not sidecar_ok and sidecar_reason and progress is not None:
+                    lrc_path = find_sidecar_lrc_path(path)
+                    progress.setdefault("skipped_details", []).append(
+                        {
+                            "path": str(lrc_path or path.with_suffix(".lrc")),
+                            "reason": f"侧车歌词关联失败：{sidecar_reason}",
+                        }
+                    )
         else:
             skipped += 1
             if progress is not None:

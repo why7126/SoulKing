@@ -43,6 +43,8 @@ const modalState = {
   resolver: null,
 };
 
+let appAudioPlayGeneration = 0;
+
 const WEB_PLAYABLE_AUDIO_FORMATS = new Set(["mp3", "m4a", "aac", "ogg", "wav", "flac"]);
 
 function normalizeAudioFmtApp(f) {
@@ -64,6 +66,14 @@ function syncAddToPlaylistButton() {
   els.addToPlaylistBtn.disabled = !ok;
   els.addToPlaylistBtn.title = ok ? "加入歌单" : "该歌曲仅含 APE 等格式，不支持加入歌单";
   els.addToPlaylistBtn.classList.toggle("hidden", !ok);
+}
+
+function resolveMediaSrc(pathOrUrl) {
+  if (pathOrUrl == null || pathOrUrl === "") return pathOrUrl;
+  const s = String(pathOrUrl);
+  if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("blob:")) return s;
+  const base = typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
+  return s.startsWith("/") ? `${base}${s}` : `${base}/${s}`;
 }
 
 async function request(path, options = {}) {
@@ -202,7 +212,8 @@ async function loadSongs() {
   const format = els.formatSelect.value;
   if (keyword) params.set("keyword", keyword);
   if (format) params.set("format", format);
-  state.songs = await request(`/songs?${params.toString()}`);
+  const page = await request(`/songs?${params.toString()}`);
+  state.songs = page.items || [];
   syncQueue();
   renderSongList();
 }
@@ -231,20 +242,80 @@ function syncQueue() {
   }
 }
 
-async function playSongAt(index) {
+async function playSongAt(index, failureAttempt = 0) {
   if (!state.queue.length || index < 0 || index >= state.queue.length) return;
+  if (state.queue.length && failureAttempt >= state.queue.length) {
+    showToast("列表中的歌曲均无法播放", "error");
+    return;
+  }
   const song = state.queue[index];
   if (!songHasWebPlayableAudioApp(song)) {
-    showToast("该歌曲仅含 APE 等格式，浏览器无法试听", "error");
+    state.currentIndex = index;
+    state.selectedSongId = song.id;
+    renderSongList();
+    const idx = nextIndexAfterPlaybackFailure();
+    if (idx >= 0 && state.queue[idx] && songHasWebPlayableAudioApp(state.queue[idx])) {
+      showToast("当前曲目无可播格式，已跳过", "warning");
+      playSongAt(idx, failureAttempt + 1).catch(() => {});
+    } else {
+      let fallback = -1;
+      const len = state.queue.length;
+      for (let step = 1; step <= len; step++) {
+        const i = (index + step) % len;
+        if (songHasWebPlayableAudioApp(state.queue[i])) {
+          fallback = i;
+          break;
+        }
+      }
+      if (fallback >= 0) {
+        showToast("当前曲目无可播格式，已跳过", "warning");
+        playSongAt(fallback, failureAttempt + 1).catch(() => {});
+      } else {
+        showToast("列表中的歌曲均无法播放", "error");
+      }
+    }
     return;
   }
   state.currentIndex = index;
   state.selectedSongId = song.id;
   renderSongList();
   const playInfo = await request(`/songs/${song.id}/play`);
-  els.audioPlayer.src = playInfo.stream_url;
+  const audio = els.audioPlayer;
+  const streamSrc = resolveMediaSrc(playInfo.stream_url);
+  appAudioPlayGeneration += 1;
+  const gen = appAudioPlayGeneration;
+
+  const skipToNext = (message) => {
+    if (gen !== appAudioPlayGeneration) return;
+    if (state.playMode === "single-loop") {
+      showToast("当前曲目无法播放", "error");
+      return;
+    }
+    const idx = nextIndexAfterPlaybackFailure();
+    if (idx >= 0 && state.queue[idx]) {
+      showToast(message || "当前曲目无法播放，已跳过", "warning");
+      playSongAt(idx, failureAttempt + 1).catch(() => {});
+    } else {
+      showToast("播放失败", "error");
+    }
+  };
+
+  const onErr = () => {
+    audio.removeEventListener("error", onErr);
+    if (gen !== appAudioPlayGeneration) return;
+    skipToNext("当前曲目无法播放，已跳过");
+  };
+  audio.addEventListener("error", onErr, { once: true });
+
+  audio.src = streamSrc;
   els.nowPlaying.textContent = `${song.title} · ${playInfo.selected_format.toUpperCase()}`;
-  await els.audioPlayer.play();
+  try {
+    await audio.play();
+  } catch (_err) {
+    audio.removeEventListener("error", onErr);
+    if (gen !== appAudioPlayGeneration) return;
+    skipToNext("当前曲目无法播放，已跳过");
+  }
 }
 
 function nextIndex() {
@@ -253,7 +324,17 @@ function nextIndex() {
   if (state.playMode === "shuffle") return Math.floor(Math.random() * state.queue.length);
   if (state.currentIndex < state.queue.length - 1) return state.currentIndex + 1;
   if (state.playMode === "list-loop") return 0;
+  // sequence：最后一首后不循环
   return -1;
+}
+
+/** 非单曲模式下跳过失败曲目；若下一索引仍为当前曲则顺序进一位 */
+function nextIndexAfterPlaybackFailure() {
+  const len = state.queue.length;
+  if (len <= 1) return -1;
+  const normal = nextIndex();
+  if (normal !== state.currentIndex) return normal;
+  return (state.currentIndex + 1) % len;
 }
 
 function prevIndex() {
@@ -294,7 +375,7 @@ async function openSongDetail(songId) {
     if (playVariantBtn) {
       playVariantBtn.addEventListener("click", async () => {
         try {
-          els.audioPlayer.src = `/song-files/${file.id}/stream`;
+          els.audioPlayer.src = resolveMediaSrc(`/song-files/${file.id}/stream`);
           els.nowPlaying.textContent = `${detail.title} · ${file.format.toUpperCase()}`;
           await els.audioPlayer.play();
         } catch (err) {
