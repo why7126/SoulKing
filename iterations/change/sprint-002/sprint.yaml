@@ -1,0 +1,31 @@
+sprint_id: sprint-002
+status: planning
+lifecycle_stage: change
+start_date: "2026-08-27 08:54:38"
+end_date: "2026-09-03 08:54:38"
+capacity:
+  developers: 2
+  testers: 1
+capacity_person_days: 30
+requirements: []
+bugs: []
+changes:
+  - tighten-soulking-sprint-capacity-governance
+scope_estimates:
+  - id: tighten-soulking-sprint-capacity-governance
+    change: tighten-soulking-sprint-capacity-governance
+    size: M
+    story_points: 3
+    estimated_person_days: 2
+    rationale: 应用 ProjectTilesFST Sprint 容量配置和超出策略学习项 A1-A5，补齐 SoulKing 容量门禁规则、技能、OpenSpec 规格、脚本刷新和聚焦测试；不修改业务运行时代码。
+estimated_story_points: 3
+estimated_person_days: 2
+capacity_usage: 0.0667
+fix_buffer_person_days: 28
+fix_buffer_ratio: 0.9333
+capacity_gate:
+  capacity_person_days: 30
+  estimated_person_days: 2
+  capacity_usage: 0.0667
+  result: pass
+  note: 当前 Sprint 仅承载 Sprint 容量治理学习应用，估算 2/30 人天，容量门禁通过，fix 缓冲 28 人天 / 93.33%。

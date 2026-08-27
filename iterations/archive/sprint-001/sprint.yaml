@@ -1,0 +1,94 @@
+sprint_id: sprint-001
+status: completed
+lifecycle_stage: archive
+start_date: "2026-08-07 13:04:31"
+end_date: "2026-08-14 13:04:31"
+capacity:
+  developers: 1
+  testers: 0
+  person_days: 3
+requirements: []
+bugs: []
+changes:
+  - study-projecttilesfst-governance-hardening
+  - study-projectmoonbox-governance-hardening
+  - apply-projecttilesfst-spec-study-enhancements
+  - study-deepseek-harness-governance-hardening
+  - simplify-review-default-approval
+  - apply-tilesfst-governance-upgrade-learnings
+  - apply-tilesfst-workflow-quality-learnings
+  - apply-tilesfst-data-collection-governance-learnings
+scope_estimates:
+  - type: change
+    id: study-projecttilesfst-governance-hardening
+    change: study-projecttilesfst-governance-hardening
+    size: S
+    story_points: 1
+    person_days: 1
+    rationale: "跨项目治理学习规则和校验脚本加固，不涉及业务代码。"
+  - id: study-projectmoonbox-governance-hardening
+    change: study-projectmoonbox-governance-hardening
+    size: S
+    story_points: 1
+    estimated_person_days: 1
+    rationale: 跨项目学习 ProjectMoonBox 的命令顺序、Git 安全、Issues 看板、UI 验收和上下文预算治理，不涉及业务代码。
+  - id: apply-projecttilesfst-spec-study-enhancements
+    change: apply-projecttilesfst-spec-study-enhancements
+    size: S
+    story_points: 1
+    estimated_person_days: 1
+    rationale: 应用 ProjectTilesFST spec-study 增强项 S1-S5，补强跨项目学习、文档治理和最小相关验证，不涉及业务代码。
+  - id: study-deepseek-harness-governance-hardening
+    change: study-deepseek-harness-governance-hardening
+    size: S
+    story_points: 1
+    estimated_person_days: 1
+    rationale: 学习 deepseek-harness 的文档治理、决策记录、文档校验、最小相关验证和事故复盘治理，不涉及业务代码。
+  - id: simplify-review-default-approval
+    change: simplify-review-default-approval
+    size: S
+    story_points: 1
+    estimated_person_days: 0.5
+    rationale: 简化 REQ/BUG review 命令默认通过语义，减少重复输入 --approve，不涉及业务代码。
+  - id: apply-tilesfst-governance-upgrade-learnings
+    change: apply-tilesfst-governance-upgrade-learnings
+    size: M
+    story_points: 3
+    estimated_person_days: 2
+    rationale: 应用 TilesFST 的升级路径、根因证据、音乐媒体验收和文档索引治理学习项，不修改业务运行时代码。
+  - id: apply-tilesfst-workflow-quality-learnings
+    change: apply-tilesfst-workflow-quality-learnings
+    size: M
+    story_points: 3
+    estimated_person_days: 2
+    rationale: 应用 TilesFST T1-T4 工作流质量治理学习项，补强输出契约、Sprint 选择、BUG review 根因门禁和 AI Usage 矩阵语义，不修改业务运行时代码。
+  - id: apply-tilesfst-data-collection-governance-learnings
+    change: apply-tilesfst-data-collection-governance-learnings
+    size: M
+    story_points: 3
+    estimated_person_days: 2
+    rationale: 应用 TilesFST 数据采集治理学习项 D1-D4，补充 SoulKing 数据采集标准、流程门禁、校验脚本和测试，不修改业务运行时代码。
+estimated_story_points: 14
+estimated_person_days: 9.5
+closed_at: "2026-08-27 09:24:19"
+archive_summary:
+  verdict: pass
+  archived_changes: 8
+  skipped_changes: 8
+  blocked_changes: 0
+  validation:
+    readiness: pass
+    product_data_collection_observability: pass
+    issue_promotion: no_eligible_issues
+  notes:
+    - "Sprint 范围内 8 个 Change 均已归档，关闭 Sprint 时无需再次执行单 Change 归档。"
+    - "AI Usage 快照当前为 estimated_fallback；缺少本地 session JSONL 时按归档规则记录警告并继续。"
+product_data_collection_observability:
+  status: applicable
+  affected_layers:
+    - governance_standard
+    - workflow_gate
+    - validation_scripts
+    - product_data_observability_standard
+  reason: "Sprint 范围包含 apply-tilesfst-data-collection-governance-learnings，新增 ProjectSoulKing 产品数据采集与链路观测标准、流程门禁和校验脚本，触发 Sprint 归档复核。"
+  validation: "已运行 python scripts/validate-product-data-observability-gates.py --sprint sprint-001；补齐 Sprint 级声明后复核通过。"

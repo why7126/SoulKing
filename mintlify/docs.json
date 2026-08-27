@@ -1,0 +1,70 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "ProjectSoulKing 产品手册",
+  "theme": "mint",
+  "colors": {
+    "primary": "#6A4C93",
+    "light": "#8F79B8",
+    "dark": "#3F2D59"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "versions": [
+      {
+        "version": "简体中文",
+        "tabs": [
+          {
+            "tab": "用户指南",
+            "groups": [
+              {
+                "group": "入门",
+                "pages": [
+                  "index",
+                  "guides/getting-started"
+                ]
+              },
+              {
+                "group": "产品入口",
+                "pages": [
+                  "roles/admin",
+                  "roles/listener",
+                  "roles/operator"
+                ]
+              },
+              {
+                "group": "常用任务",
+                "pages": [
+                  "tasks/music-library",
+                  "tasks/media-and-lyrics"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "版本与公告",
+            "groups": [
+              {
+                "group": "版本索引",
+                "pages": [
+                  "versions/index"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "文档治理",
+            "groups": [
+              {
+                "group": "公开边界",
+                "pages": [
+                  "governance/public-boundary",
+                  "governance/site-governance"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

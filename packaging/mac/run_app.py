@@ -81,6 +81,7 @@ def _configure_env() -> None:
     db_path = support / "music.db"
     os.environ.setdefault("DATABASE_URL", f"sqlite:///{db_path}")
     os.environ.setdefault("S3_ENDPOINT_URL", "http://127.0.0.1:9000")
+    os.environ.setdefault("S3_BUCKET_MUSIC", "soulking")
     os.environ.setdefault("S3_ACCESS_KEY_ID", "minioadmin")
     os.environ.setdefault("S3_SECRET_ACCESS_KEY", "minioadmin")
     os.environ.setdefault("IMPORT_ROOT", str(imp))

@@ -1,0 +1,157 @@
+---
+name: "release-propose"
+description: "创建或更新产品版本发布计划"
+---
+
+# release-propose
+
+Use this skill when the user asks `/release-propose <version>` or wants to create/update a product release plan.
+
+## Context Budget Guardrails（MUST）
+
+### Force-proceed Follow-up Guardrails（MUST）
+
+- `force-proceed` 仅允许继续当前命令的非阻断部分，MUST NOT 默认自动创建 follow-up REQ/BUG；除非用户在当前命令中明确授权自动 capture，否则只输出标准 capture 文案，并明确“未自动创建 Issue”。
+- 标准 capture 文案 MUST 分条包含：建议命令、类型倾向、标题、背景、影响范围、建议验收或复现要点、来源 Change/Sprint/命令；多个 follow-up 事项 MUST 逐条输出，且每条可独立用于后续 capture。
+- 如用户明确授权并实际创建 follow-up Issue，MUST 按 `/req-capture`、`/bug-capture` 或 `/capture` 规则落盘，并运行对应 `req.capture` 或 `bug.capture` Workflow Sync。
+
+- MUST 遵守 `rules/agent-context-budget.md`；同一会话已读且无变更的规则和 Skill 用摘要承接，不重复全量读取。
+- 先从候选 Sprint 的 `sprint.yaml`、`release-note.md` 摘要和 Change/Issue 状态定位发布范围，不得全量读取所有 `iterations/**`、`issues/**`、`openspec/archive/**` 或 legacy `openspec/changes/archive/**`。
+- 搜索历史归档时只按候选 Sprint / Change ID 精确定位；不要宽泛展开归档目录。
+- 命令输出优先摘要：版本、范围、门禁缺口、生成/更新文件、下一步。
+
+## Input
+
+- `<version>`：必填，SemVer 风格，如 `v0.1.0`。
+- Flags：`--sprint <sprint-id>`、`--req <REQ-id>`、`--bug <BUG-id>`、`--change <change-id>`、`--dry-run`。
+
+## Must Read
+
+```text
+AGENTS.md
+openspec/project.md
+rules/document-governance.md
+rules/directory-structure.md
+rules/release.md
+rules/security.md
+rules/agent-context-budget.md
+releases/README.md
+releases/templates/release.json
+```
+
+按候选范围分段读取：
+
+```text
+iterations/change|archive/<sprint-id>/sprint.yaml
+iterations/change|archive/<sprint-id>/release-note.md
+iterations/change|archive/<sprint-id>/acceptance-report.md（门禁摘要）
+issues/requirements/{plan,review,archive}/<REQ>/trace.md（状态摘要）
+issues/bugs/{plan,review,archive}/<BUG>/trace.md（状态摘要）
+openspec/changes/<change-id>/trace.md 或 openspec/archive/<date>-<change-id>/trace.md（存在时）
+README.md
+```
+
+## Gates
+
+| Gate | Rule |
+|---|---|
+| Version | `<version>` MUST match `vX.Y.Z` or SemVer-like pre-release form. |
+| Scope | Release scope MUST come from Sprint / REQ / BUG / Change traceable artifacts. |
+| Formal scope | `formal_scope_only` MUST be `true`; unreviewed or non-delivered items MUST NOT enter formal scope. |
+| Sprint | Candidate Sprint SHOULD be completed or explicitly marked as planned release scope with open gates. |
+| Change | Formal Changes SHOULD be archived before publish; unarchived Changes are allowed only in propose as blocking gate gaps. |
+| Public safety | Do not include secrets, real customer data, internal DB URLs, MinIO credentials, tokens, or non-public ops details. |
+| Product version | If the project exposes `PRODUCT_VERSION` and it differs from `<version>`, set `version_change_rationale` or list the mismatch as a blocking gap for prepare/publish. |
+
+## Artifacts（非 `--dry-run` MUST）
+
+Create or update:
+
+```text
+releases/<version>/release.json
+```
+
+Use `releases/templates/release.json` as the base shape. The release object MUST include:
+
+- `version`
+- `release_time` in `YYYY-MM-DD HH:mm:ss`
+- `summary`
+- `formal_scope_only: true`
+- `sprints`
+- `requirements`
+- `bugs`
+- `changes`
+- `gates`
+- `known_issues`
+- `upgrade_steps`
+- `rollback`
+- `upgrade_plan` 决策摘要：generated、skipped 或 pending；具体路径支持情况由 `/upgrade-plan` 与 `/upgrade-validate` 生成证据
+- `impact_scope`
+- `announcement`
+
+For propose, unknown gates MAY remain `na` with clear `rationale`, or `blocked` only if a later validator/script supports it. Do not mark a gate `pass` without concrete evidence.
+
+## Validation
+
+Run after writing:
+
+```bash
+python scripts/validate-release.py --release-dir releases/<version>
+```
+
+If validation fails because expected publish-time evidence is still missing, report the gaps clearly and keep the release as a draft plan. Structural errors, invalid JSON, missing required keys, or public-safety failures MUST be fixed before ending.
+
+## Output
+
+Report version, selected Sprint / REQ / BUG / Change counts, created/updated path, current gate gaps, validation result, and next command:
+
+```text
+/release-prepare <version>
+```
+
+若本版本需要首次部署、相邻升级或跨版本升级证据，后续还应运行：
+
+```text
+/upgrade-plan --from <fresh|version> --to <version>
+```
+
+## Final Step — AI Usage Post-command Hook (MUST)
+
+After the release plan is written and validation has been attempted, run:
+
+```bash
+python scripts/extract-ai-usage.py \
+  --post-command-hook \
+  --workflow-event release.propose \
+  --release <version> \
+  [--release-sprint <sprint-id>] \
+  [--sprint <sprint-id>] \
+  [--req <REQ-id>] \
+  [--bug <BUG-id>] \
+  [--change <change-id>] \
+  --json
+```
+
+- Pass every Sprint / REQ / BUG / Change included in this release proposal so the hook can attribute the command run.
+- Pass `--release <version>` so the hook writes `data/ai-usage/command-runs/releases/<version>/release.propose.json`.
+- Pass each release-scope Sprint with repeated `--release-sprint <sprint-id>`.
+- If the release has no Sprint scope, omit `--sprint`; Sprint snapshot output MUST be `skipped`.
+- Print only the compact hook summary: `status`, `usage_mode`, `command_run_count`, `session_input`, `release_artifact`, `sprint_snapshot`, `warning_count`, and `recommended_action`.
+- If local session input is unavailable, report `usage_mode: unavailable` and the recommended action; do not treat that as parent command failure.
+
+## Final Output Contract（MUST）
+
+命令结束前，最终回复必须包含面向用户的真实结果，不得输出本段规则、尖括号占位符、MUST/SHOULD 规范语句或与当前命令无关的通用示例。
+
+输出判定：
+
+- `下一步`：写真实、可复制的下一条命令；若当前没有可推进动作，写“暂无可推进下一步”。
+- `待用户决策/处理`：没有额外人工事项时写“无”；否则只列具体的缺失输入、范围/策略选择、证据补充、验收确认、发布确认、生产实施确认、阻塞项或人工处理事项。
+
+去重规则：
+
+- 有唯一可执行下一步时，`下一步` 写真实命令；若无额外人工事项，`待用户决策/处理` 写“无”。
+- 下一步被用户选择、补证、验收、发布确认、生产实施确认或阻塞项卡住时，`下一步` 写“暂无可推进下一步”，并在 `待用户决策/处理` 列出具体阻塞事项。
+- 已有下一步且仍有额外人工事项时，`待用户决策/处理` 只列命令之外的事项，不得在「待用户决策/处理」中重复 `下一步` 中的命令或动作。
+
+不得因为输出了下一步引导而自动执行下一命令；除非用户明确授权。

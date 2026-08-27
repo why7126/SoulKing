@@ -21,7 +21,29 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import Album, Artist, Genre, Language, Playlist, PlaylistItem, Song, SongChorusArtist, SongComposerArtist, SongFile, SongGenre, SongLanguage, SongLeadArtist, SongLyricistArtist, SongTag, Tag
+from app.models import (
+    Album,
+    Artist,
+    Genre,
+    Language,
+    Playlist,
+    PlaylistItem,
+    Song,
+    SongChorusArtist,
+    SongComposerArtist,
+    SongFile,
+    SongGenre,
+    SongLanguage,
+    SongLeadArtist,
+    SongLyricistArtist,
+    SongTag,
+    Tag,
+    User,
+    UserSession,
+)
+from app.auth import seed_admin_user
+from app.auth_routes import router as auth_router
+from app.middleware_auth import AuthMiddleware
 from app.schemas import (
     BatchSongDownloadIn,
     BulkSongMetadataUpdate,
@@ -82,9 +104,27 @@ from app.storage import S3Storage
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name)
+app.add_middleware(AuthMiddleware)
+app.include_router(auth_router)
 storage = S3Storage()
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+def request_user(request: Request) -> User:
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def playlist_for_user(db: Session, playlist_id: int, user_id: int) -> Playlist:
+    playlist = db.scalar(
+        select(Playlist).where(Playlist.id == playlist_id, Playlist.user_id == user_id)
+    )
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    return playlist
 
 scan_progress = {
     "is_scanning": False,
@@ -654,6 +694,53 @@ def _sqlite_rebuild_song_files_without_hash_unique(connection) -> None:
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_song_files_sha256 ON song_files (sha256)"))
 
 
+def _sqlite_rebuild_playlists_user_scope(connection, admin_id: int) -> None:
+    """Rebuild playlists with user_id NOT NULL and UNIQUE(user_id, name)."""
+    connection.execute(
+        text(
+            """
+            CREATE TABLE playlists__m (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at DATETIME,
+                UNIQUE(user_id, name),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            INSERT INTO playlists__m (id, user_id, name, sort_order, created_at)
+            SELECT id, COALESCE(user_id, :uid), name, sort_order, created_at FROM playlists
+            """
+        ),
+        {"uid": admin_id},
+    )
+    connection.execute(text("DROP TABLE playlists"))
+    connection.execute(text("ALTER TABLE playlists__m RENAME TO playlists"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_playlists_user_id ON playlists (user_id)"))
+
+
+def _migrate_playlists_user_scope(connection, admin_id: int) -> None:
+    inspector = inspect(connection)
+    if "playlists" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("playlists")}
+    if "user_id" not in cols:
+        connection.execute(text("ALTER TABLE playlists ADD COLUMN user_id INTEGER"))
+    connection.execute(
+        text("UPDATE playlists SET user_id = :uid WHERE user_id IS NULL"),
+        {"uid": admin_id},
+    )
+    dialect = connection.dialect.name
+    if dialect == "sqlite":
+        _sqlite_rebuild_playlists_user_scope(connection, admin_id)
+
+
 def _migrate_drop_song_file_hash_unique(connection) -> None:
     """移除 song_files 上 (sha256, file_size) 全局唯一约束，使合并后可保留多条相同内容记录（不同 object_key）。"""
     dialect = connection.dialect.name
@@ -671,6 +758,8 @@ def _migrate_drop_song_file_hash_unique(connection) -> None:
 def ensure_schema() -> None:
     inspector = inspect(engine)
     with engine.begin() as connection:
+        User.__table__.create(bind=connection, checkfirst=True)
+        UserSession.__table__.create(bind=connection, checkfirst=True)
         if "languages" not in inspector.get_table_names():
             Language.__table__.create(bind=connection, checkfirst=True)
         if "genres" not in inspector.get_table_names():
@@ -701,9 +790,18 @@ def ensure_schema() -> None:
         artist_columns = {col["name"] for col in inspect(engine).get_columns("artists")}
         if "types" not in artist_columns:
             connection.execute(text("ALTER TABLE artists ADD COLUMN types TEXT"))
-        playlist_columns = {col["name"] for col in inspect(engine).get_columns("playlists")}
-        if "sort_order" not in playlist_columns:
-            connection.execute(text("ALTER TABLE playlists ADD COLUMN sort_order INTEGER DEFAULT 0"))
+        if "playlists" in inspect(engine).get_table_names():
+            playlist_columns = {col["name"] for col in inspect(engine).get_columns("playlists")}
+            if "sort_order" not in playlist_columns:
+                connection.execute(text("ALTER TABLE playlists ADD COLUMN sort_order INTEGER DEFAULT 0"))
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS _schema_migrations (name VARCHAR(128) PRIMARY KEY)")
+            )
+            done_pl = connection.execute(
+                text("SELECT 1 FROM _schema_migrations WHERE name = 'playlists_user_scope_v1'")
+            ).first()
+            if not done_pl:
+                pass  # user_id migration runs after seed in db block below
         if "song_genres" in inspect(engine).get_table_names():
             connection.execute(
                 text(
@@ -748,6 +846,19 @@ def ensure_schema() -> None:
 
     db = next(get_db())
     try:
+        admin_user = seed_admin_user(db)
+        with engine.begin() as connection:
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS _schema_migrations (name VARCHAR(128) PRIMARY KEY)")
+            )
+            done_pl = connection.execute(
+                text("SELECT 1 FROM _schema_migrations WHERE name = 'playlists_user_scope_v1'")
+            ).first()
+            if not done_pl and "playlists" in inspect(engine).get_table_names():
+                _migrate_playlists_user_scope(connection, admin_user.id)
+                connection.execute(
+                    text("INSERT INTO _schema_migrations (name) VALUES ('playlists_user_scope_v1')")
+                )
         db.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS _schema_migrations (name VARCHAR(128) PRIMARY KEY)"
@@ -823,9 +934,12 @@ async def client_debug_log(request: Request):
 
 
 @app.get("/library/stats")
-def library_stats(db: Session = Depends(get_db)):
+def library_stats(request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
     song_count = db.scalar(select(func.count(Song.id))) or 0
-    playlist_count = db.scalar(select(func.count(Playlist.id))) or 0
+    playlist_count = (
+        db.scalar(select(func.count(Playlist.id)).where(Playlist.user_id == user.id)) or 0
+    )
     return {"song_count": song_count, "playlist_count": playlist_count}
 
 
@@ -1109,8 +1223,13 @@ def list_songs(
 
 
 @app.get("/playlists", response_model=list[PlaylistOut])
-def list_playlists(db: Session = Depends(get_db)):
-    playlists = db.scalars(select(Playlist).order_by(Playlist.sort_order.asc(), Playlist.created_at.asc())).all()
+def list_playlists(request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
+    playlists = db.scalars(
+        select(Playlist)
+        .where(Playlist.user_id == user.id)
+        .order_by(Playlist.sort_order.asc(), Playlist.created_at.asc())
+    ).all()
     result = []
     for playlist in playlists:
         song_count = db.scalar(
@@ -1151,12 +1270,22 @@ def admin_filter_options(db: Session = Depends(get_db)):
 
 
 @app.post("/playlists", response_model=PlaylistOut)
-def create_playlist(payload: PlaylistCreate, db: Session = Depends(get_db)):
-    exists = db.scalar(select(Playlist).where(func.lower(Playlist.name) == payload.name.lower()))
+def create_playlist(payload: PlaylistCreate, request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
+    exists = db.scalar(
+        select(Playlist).where(
+            Playlist.user_id == user.id,
+            func.lower(Playlist.name) == payload.name.lower(),
+        )
+    )
     if exists:
         raise HTTPException(status_code=400, detail="Playlist already exists")
-    max_sort_order = db.scalar(select(func.max(Playlist.sort_order))) or 0
-    playlist = Playlist(name=payload.name.strip(), sort_order=max_sort_order + 1)
+    max_sort_order = (
+        db.scalar(select(func.max(Playlist.sort_order)).where(Playlist.user_id == user.id)) or 0
+    )
+    playlist = Playlist(
+        name=payload.name.strip(), sort_order=max_sort_order + 1, user_id=user.id
+    )
     db.add(playlist)
     db.commit()
     db.refresh(playlist)
@@ -1164,14 +1293,21 @@ def create_playlist(payload: PlaylistCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/playlists/{playlist_id}", response_model=PlaylistOut)
-def update_playlist(playlist_id: int, payload: PlaylistUpdate, db: Session = Depends(get_db)):
-    playlist = db.scalar(select(Playlist).where(Playlist.id == playlist_id))
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
+def update_playlist(
+    playlist_id: int, payload: PlaylistUpdate, request: Request, db: Session = Depends(get_db)
+):
+    user = request_user(request)
+    playlist = playlist_for_user(db, playlist_id, user.id)
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Playlist name cannot be empty")
-    exists = db.scalar(select(Playlist).where(func.lower(Playlist.name) == name.lower(), Playlist.id != playlist_id))
+    exists = db.scalar(
+        select(Playlist).where(
+            Playlist.user_id == user.id,
+            func.lower(Playlist.name) == name.lower(),
+            Playlist.id != playlist_id,
+        )
+    )
     if exists:
         raise HTTPException(status_code=400, detail="Playlist already exists")
     playlist.name = name
@@ -1181,21 +1317,33 @@ def update_playlist(playlist_id: int, payload: PlaylistUpdate, db: Session = Dep
 
 
 @app.delete("/playlists/{playlist_id}")
-def delete_playlist(playlist_id: int, db: Session = Depends(get_db)):
-    playlist = db.scalar(select(Playlist).where(Playlist.id == playlist_id))
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
+def delete_playlist(playlist_id: int, request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
+    playlist = playlist_for_user(db, playlist_id, user.id)
     db.delete(playlist)
     db.commit()
     return {"success": True}
 
 
 @app.put("/playlists-reorder", response_model=list[PlaylistOut])
-def reorder_playlists(payload: PlaylistReorder, db: Session = Depends(get_db)):
-    playlists = db.scalars(select(Playlist).where(Playlist.id.in_(payload.playlist_ids))).all()
+def reorder_playlists(payload: PlaylistReorder, request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
+    playlists = db.scalars(
+        select(Playlist).where(
+            Playlist.id.in_(payload.playlist_ids), Playlist.user_id == user.id
+        )
+    ).all()
     by_id = {playlist.id: playlist for playlist in playlists}
     ordered = [by_id[playlist_id] for playlist_id in payload.playlist_ids if playlist_id in by_id]
-    remainder = [playlist for playlist in db.scalars(select(Playlist).order_by(Playlist.sort_order.asc(), Playlist.created_at.asc())).all() if playlist.id not in by_id]
+    remainder = [
+        playlist
+        for playlist in db.scalars(
+            select(Playlist)
+            .where(Playlist.user_id == user.id)
+            .order_by(Playlist.sort_order.asc(), Playlist.created_at.asc())
+        ).all()
+        if playlist.id not in by_id
+    ]
     final = ordered + remainder
     for index, playlist in enumerate(final, start=1):
         playlist.sort_order = index
@@ -1208,10 +1356,9 @@ def reorder_playlists(payload: PlaylistReorder, db: Session = Depends(get_db)):
 
 
 @app.get("/playlists/{playlist_id}", response_model=PlaylistDetailOut)
-def get_playlist(playlist_id: int, db: Session = Depends(get_db)):
-    playlist = db.scalar(select(Playlist).where(Playlist.id == playlist_id))
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
+def get_playlist(playlist_id: int, request: Request, db: Session = Depends(get_db)):
+    user = request_user(request)
+    playlist = playlist_for_user(db, playlist_id, user.id)
 
     items = db.scalars(
         select(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id).order_by(PlaylistItem.position.asc())
@@ -1229,10 +1376,11 @@ def get_playlist(playlist_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/playlists/{playlist_id}/items", response_model=PlaylistOut)
-def add_song_to_playlist(playlist_id: int, payload: PlaylistSongCreate, db: Session = Depends(get_db)):
-    playlist = db.scalar(select(Playlist).where(Playlist.id == playlist_id))
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
+def add_song_to_playlist(
+    playlist_id: int, payload: PlaylistSongCreate, request: Request, db: Session = Depends(get_db)
+):
+    user = request_user(request)
+    playlist = playlist_for_user(db, playlist_id, user.id)
 
     song = db.scalar(select(Song).where(Song.id == payload.song_id))
     if not song:
@@ -1265,7 +1413,11 @@ def add_song_to_playlist(playlist_id: int, payload: PlaylistSongCreate, db: Sess
 
 
 @app.delete("/playlists/{playlist_id}/items/{song_id}")
-def remove_song_from_playlist(playlist_id: int, song_id: int, db: Session = Depends(get_db)):
+def remove_song_from_playlist(
+    playlist_id: int, song_id: int, request: Request, db: Session = Depends(get_db)
+):
+    user = request_user(request)
+    playlist_for_user(db, playlist_id, user.id)
     item = db.scalar(select(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id, PlaylistItem.song_id == song_id))
     if not item:
         raise HTTPException(status_code=404, detail="Playlist item not found")

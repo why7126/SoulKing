@@ -1,0 +1,76 @@
+name: soulking
+
+services:
+  soulking-app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: soulking-app
+    env_file:
+      - ${SOULKING_DEPLOY_ENV_FILE:-../../.env}
+    ports:
+      - "${HOST_PORT_APP:-8000}:8000"
+    volumes:
+      - ../../data:/data
+      - ../../import:/import
+      - ../../app:/app/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - soulking
+
+  soulking-minio:
+    profiles:
+      - self-hosted-storage
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    container_name: soulking-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "${HOST_PORT_MINIO_API:-9000}:9000"
+      - "${HOST_PORT_MINIO_CONSOLE:-9001}:9001"
+    volumes:
+      - ../../data/minio:/data
+    networks:
+      - soulking
+
+  soulking-minio-init:
+    profiles:
+      - self-hosted-storage
+    image: ${MINIO_MC_IMAGE:-minio/mc:latest}
+    container_name: soulking-minio-init
+    depends_on:
+      - soulking-minio
+    env_file:
+      - ${SOULKING_DEPLOY_ENV_FILE:-../../.env}
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://soulking-minio:9000 $${S3_ACCESS_KEY_ID:-minioadmin} $${S3_SECRET_ACCESS_KEY:-minioadmin};
+      mc mb --ignore-existing local/$${S3_BUCKET_MUSIC:-soulking};
+      mc anonymous set none local/$${S3_BUCKET_MUSIC:-soulking};
+      echo 'Object storage bucket initialized: '$${S3_BUCKET_MUSIC:-soulking};
+      "
+    networks:
+      - soulking
+
+  soulking-docs-site:
+    profiles:
+      - docs-site
+    image: ${MINTLIFY_NODE_IMAGE:-node:22-alpine}
+    container_name: soulking-docs-site
+    working_dir: /workspace/mintlify
+    volumes:
+      - ../../mintlify:/workspace/mintlify:ro
+      - ../../deploy/scripts/docs-site-static-server.mjs:/workspace/docs-site-static-server.mjs:ro
+    ports:
+      - "${HOST_PORT_MINTLIFY_DOCS:-3001}:3000"
+    command: node /workspace/docs-site-static-server.mjs
+    networks:
+      - soulking
+
+networks:
+  soulking:
+    driver: bridge

@@ -58,6 +58,14 @@ const state = {
   songPageSize: 20,
   songListTotal: 0,
   songLibraryTotal: 0,
+  peoplePage: 1,
+  peoplePageSize: 20,
+  tagPage: 1,
+  tagPageSize: 20,
+  languagePage: 1,
+  languagePageSize: 20,
+  userPage: 1,
+  userPageSize: 20,
   quickFilterLeads: [],
   quickFilterLyricists: [],
   quickFilterComposers: [],
@@ -65,6 +73,8 @@ const state = {
   quickFilterFormats: [],
   quickFilterLanguages: [],
   quickFilterGenres: [],
+  currentUser: null,
+  users: [],
 };
 
 const ADMIN_QUICK_FILTER_SELECTS = () =>
@@ -94,6 +104,16 @@ const els = {
   adminNavPeople: document.querySelector("#adminNavPeople"),
   adminNavTags: document.querySelector("#adminNavTags"),
   adminNavLanguage: document.querySelector("#adminNavLanguage"),
+  adminNavUsers: document.querySelector("#adminNavUsers"),
+  userTableBody: document.querySelector("#userTableBody"),
+  userSearchInput: document.querySelector("#userSearchInput"),
+  userSearchClearBtn: document.querySelector("#userSearchClearBtn"),
+  userListTotalLabel: document.querySelector("#userListTotalLabel"),
+  userPagePrevBtn: document.querySelector("#userPagePrevBtn"),
+  userPageNextBtn: document.querySelector("#userPageNextBtn"),
+  userPageNumbers: document.querySelector("#userPageNumbers"),
+  userPageSizeSelect: document.querySelector("#userPageSizeSelect"),
+  userNewBtn: document.querySelector("#userNewBtn"),
   goFrontendBtn: document.querySelector("#goFrontendBtn"),
   adminUserAvatarBtn: document.querySelector("#adminUserAvatarBtn"),
   adminUserMenu: document.querySelector("#adminUserMenu"),
@@ -172,6 +192,11 @@ const els = {
   tagNewBtn: document.querySelector("#tagNewBtn"),
   tagManagerList: document.querySelector("#tagManagerList"),
   tagTableBody: document.querySelector("#tagTableBody"),
+  tagListTotalLabel: document.querySelector("#tagListTotalLabel"),
+  tagPagePrevBtn: document.querySelector("#tagPagePrevBtn"),
+  tagPageNextBtn: document.querySelector("#tagPageNextBtn"),
+  tagPageNumbers: document.querySelector("#tagPageNumbers"),
+  tagPageSizeSelect: document.querySelector("#tagPageSizeSelect"),
   peopleSearchInput: document.querySelector("#peopleSearchInput"),
   peopleSearchClearBtn: document.querySelector("#peopleSearchClearBtn"),
   peopleNewBtn: document.querySelector("#peopleNewBtn"),
@@ -179,6 +204,11 @@ const els = {
   selectAllPeople: document.querySelector("#selectAllPeople"),
   peopleManagerList: document.querySelector("#peopleManagerList"),
   peopleTableBody: document.querySelector("#peopleTableBody"),
+  peopleListTotalLabel: document.querySelector("#peopleListTotalLabel"),
+  peoplePagePrevBtn: document.querySelector("#peoplePagePrevBtn"),
+  peoplePageNextBtn: document.querySelector("#peoplePageNextBtn"),
+  peoplePageNumbers: document.querySelector("#peoplePageNumbers"),
+  peoplePageSizeSelect: document.querySelector("#peoplePageSizeSelect"),
   languageSearchInput: document.querySelector("#languageSearchInput"),
   languageSearchClearBtn: document.querySelector("#languageSearchClearBtn"),
   languageNewBtn: document.querySelector("#languageNewBtn"),
@@ -186,6 +216,11 @@ const els = {
   selectAllLanguages: document.querySelector("#selectAllLanguages"),
   languageManagerList: document.querySelector("#languageManagerList"),
   languageTableBody: document.querySelector("#languageTableBody"),
+  languageListTotalLabel: document.querySelector("#languageListTotalLabel"),
+  languagePagePrevBtn: document.querySelector("#languagePagePrevBtn"),
+  languagePageNextBtn: document.querySelector("#languagePageNextBtn"),
+  languagePageNumbers: document.querySelector("#languagePageNumbers"),
+  languagePageSizeSelect: document.querySelector("#languagePageSizeSelect"),
   genreSearchInput: document.querySelector("#genreSearchInput"),
   genreSearchClearBtn: document.querySelector("#genreSearchClearBtn"),
   genreNewBtn: document.querySelector("#genreNewBtn"),
@@ -301,9 +336,18 @@ function resolveMediaSrc(pathOrUrl) {
   return s.startsWith("/") ? `${base}${s}` : `${base}/${s}`;
 }
 
+function redirectToLogin() {
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/login?next=${next}`;
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(path, options);
+  const res = await fetch(path, { credentials: "include", ...options });
   const text = await res.text();
+  if (res.status === 401) {
+    redirectToLogin();
+    throw new Error("未登录");
+  }
   if (!res.ok) {
     let msg = (text && text.trim()) || `Request failed: ${res.status}`;
     try {
@@ -993,6 +1037,120 @@ function renderPagination(totalItems) {
     });
     els.pageNumbers.appendChild(b);
   }
+}
+
+const REF_MANAGER_PAGINATION = {
+  people: {
+    pageKey: "peoplePage",
+    sizeKey: "peoplePageSize",
+    unit: "位艺人",
+    totalLabel: "peopleListTotalLabel",
+    prevBtn: "peoplePagePrevBtn",
+    nextBtn: "peoplePageNextBtn",
+    pageNumbers: "peoplePageNumbers",
+    pageSizeSelect: "peoplePageSizeSelect",
+    render: () => renderPeopleManager(),
+  },
+  tag: {
+    pageKey: "tagPage",
+    sizeKey: "tagPageSize",
+    unit: "个标签",
+    totalLabel: "tagListTotalLabel",
+    prevBtn: "tagPagePrevBtn",
+    nextBtn: "tagPageNextBtn",
+    pageNumbers: "tagPageNumbers",
+    pageSizeSelect: "tagPageSizeSelect",
+    render: () => renderTagManager(),
+  },
+  language: {
+    pageKey: "languagePage",
+    sizeKey: "languagePageSize",
+    unit: "种语言",
+    totalLabel: "languageListTotalLabel",
+    prevBtn: "languagePagePrevBtn",
+    nextBtn: "languagePageNextBtn",
+    pageNumbers: "languagePageNumbers",
+    pageSizeSelect: "languagePageSizeSelect",
+    render: () => renderLanguageManager(),
+  },
+  user: {
+    pageKey: "userPage",
+    sizeKey: "userPageSize",
+    unit: "位用户",
+    totalLabel: "userListTotalLabel",
+    prevBtn: "userPagePrevBtn",
+    nextBtn: "userPageNextBtn",
+    pageNumbers: "userPageNumbers",
+    pageSizeSelect: "userPageSizeSelect",
+    render: () => renderUsersManager(),
+  },
+};
+
+function resetManagerPage(manager) {
+  const cfg = REF_MANAGER_PAGINATION[manager];
+  if (cfg) state[cfg.pageKey] = 1;
+}
+
+function getManagerPageSlice(items, manager) {
+  const cfg = REF_MANAGER_PAGINATION[manager];
+  const pageSize = state[cfg.sizeKey] || 20;
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (state[cfg.pageKey] > totalPages) state[cfg.pageKey] = totalPages;
+  if (state[cfg.pageKey] < 1) state[cfg.pageKey] = 1;
+  const start = (state[cfg.pageKey] - 1) * pageSize;
+  return { pageItems: items.slice(start, start + pageSize), rowOffset: start, total, totalPages };
+}
+
+function renderManagerPaginationFooter(manager, totalItems) {
+  const cfg = REF_MANAGER_PAGINATION[manager];
+  if (!cfg) return;
+  const pageSize = state[cfg.sizeKey] || 20;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (state[cfg.pageKey] > totalPages) state[cfg.pageKey] = totalPages;
+  if (state[cfg.pageKey] < 1) state[cfg.pageKey] = 1;
+  const totalLabel = els[cfg.totalLabel];
+  if (totalLabel) totalLabel.textContent = `共 ${totalItems} ${cfg.unit}`;
+  if (els[cfg.prevBtn]) els[cfg.prevBtn].disabled = state[cfg.pageKey] <= 1;
+  if (els[cfg.nextBtn]) els[cfg.nextBtn].disabled = state[cfg.pageKey] >= totalPages;
+  const nums = els[cfg.pageNumbers];
+  if (!nums) return;
+  const maxBtns = 7;
+  let start = Math.max(1, state[cfg.pageKey] - 3);
+  let end = Math.min(totalPages, start + maxBtns - 1);
+  start = Math.max(1, end - maxBtns + 1);
+  nums.innerHTML = "";
+  for (let p = start; p <= end; p += 1) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `adm-page-btn${p === state[cfg.pageKey] ? " is-active" : ""}`;
+    b.textContent = String(p);
+    b.addEventListener("click", () => {
+      state[cfg.pageKey] = p;
+      cfg.render();
+    });
+    nums.appendChild(b);
+  }
+}
+
+function bindManagerPaginationControls() {
+  Object.values(REF_MANAGER_PAGINATION).forEach((cfg) => {
+    els[cfg.prevBtn]?.addEventListener("click", () => {
+      if (state[cfg.pageKey] > 1) {
+        state[cfg.pageKey] -= 1;
+        cfg.render();
+      }
+    });
+    els[cfg.nextBtn]?.addEventListener("click", () => {
+      state[cfg.pageKey] += 1;
+      cfg.render();
+    });
+    els[cfg.pageSizeSelect]?.addEventListener("change", () => {
+      state[cfg.sizeKey] = Number(els[cfg.pageSizeSelect].value) || 20;
+      state[cfg.pageKey] = 1;
+      cfg.render();
+    });
+  });
 }
 
 const adminPageMusic = document.querySelector("#admin-page-music");
@@ -1970,6 +2128,62 @@ function renderSortIndicators() {
   });
 }
 
+function managerRowActionsCell(menuInnerHtml) {
+  return `<td class="col-actions" data-stop-row="1">
+    <div class="adm-actions-inner">
+      <div class="table-more">
+        <button class="adm-icon-btn table-more-btn" data-role="more" type="button" aria-label="更多">⋮</button>
+        <div class="table-more-menu hidden" data-role="menu">${menuInnerHtml}</div>
+      </div>
+    </div>
+  </td>`;
+}
+
+function wireTableMoreMenuOnRow(tr) {
+  const moreBtn = tr.querySelector('[data-role="more"]');
+  const menu = tr.querySelector('[data-role="menu"]');
+  const tableMore = moreBtn?.closest(".table-more");
+  const closeMenuAndReturnHome = () => {
+    if (!menu) return;
+    menu.classList.add("hidden");
+    menu.classList.remove("table-more-menu-fixed");
+    menu.style.top = "";
+    menu.style.left = "";
+    menu.style.right = "";
+    if (tableMore) tableMore.appendChild(menu);
+  };
+  if (!moreBtn || !menu) return closeMenuAndReturnHome;
+  moreBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    document.querySelectorAll(".table-more-menu").forEach((node) => {
+      if (node !== menu) {
+        node.classList.add("hidden");
+        node.classList.remove("table-more-menu-fixed");
+        node.style.top = "";
+        node.style.left = "";
+        node.style.right = "";
+        const home = node._tableMoreHome;
+        if (home && node.parentNode === document.body) home.appendChild(node);
+      }
+    });
+    const wasHidden = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden");
+    if (wasHidden) {
+      menu._tableMoreHome = tableMore;
+      document.body.appendChild(menu);
+      menu.classList.add("table-more-menu-fixed");
+      const rect = moreBtn.getBoundingClientRect();
+      const menuWidth = menu.offsetWidth || 120;
+      menu.style.top = `${rect.bottom + 2}px`;
+      menu.style.left = `${Math.max(8, rect.right - menuWidth)}px`;
+      menu.style.right = "auto";
+    } else {
+      closeMenuAndReturnHome();
+    }
+  });
+  return closeMenuAndReturnHome;
+}
+
 function renderSongs() {
   if (!els.songTableBody) return;
   els.songTableBody.innerHTML = "";
@@ -2054,49 +2268,7 @@ function renderSongs() {
       if (!nowPlaying) tr.classList.add("is-active");
       openEditModal(song.id).catch((err) => showToast(`打开编辑失败: ${err.message || err}`, "error"));
     });
-    const moreBtn = tr.querySelector('[data-role="more"]');
-    const menu = tr.querySelector('[data-role="menu"]');
-    const tableMore = moreBtn.closest(".table-more");
-    moreBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      document.querySelectorAll('.table-more-menu').forEach((node) => {
-        if (node !== menu) {
-          node.classList.add("hidden");
-          node.classList.remove("table-more-menu-fixed");
-          node.style.top = "";
-          node.style.left = "";
-          node.style.right = "";
-          const home = node._tableMoreHome;
-          if (home && node.parentNode === document.body) home.appendChild(node);
-        }
-      });
-      const wasHidden = menu.classList.contains("hidden");
-      menu.classList.toggle("hidden");
-      if (wasHidden) {
-        menu._tableMoreHome = tableMore;
-        document.body.appendChild(menu);
-        menu.classList.add("table-more-menu-fixed");
-        const rect = moreBtn.getBoundingClientRect();
-        const gap = 2;
-        menu.style.top = `${rect.bottom + gap}px`;
-        menu.style.left = `${rect.right - 110}px`;
-        menu.style.right = "auto";
-      } else {
-        menu.classList.remove("table-more-menu-fixed");
-        menu.style.top = "";
-        menu.style.left = "";
-        menu.style.right = "";
-        if (tableMore) tableMore.appendChild(menu);
-      }
-    });
-    function closeMenuAndReturnHome() {
-      menu.classList.add("hidden");
-      menu.classList.remove("table-more-menu-fixed");
-      menu.style.top = "";
-      menu.style.left = "";
-      menu.style.right = "";
-      if (tableMore) tableMore.appendChild(menu);
-    }
+    const closeMenuAndReturnHome = wireTableMoreMenuOnRow(tr);
     tr.querySelector('[data-role="play"]')?.addEventListener("click", (ev) => {
       ev.stopPropagation();
       closeMenuAndReturnHome();
@@ -2562,31 +2734,36 @@ function renderTagManager() {
   const keyword = (els.tagSearchInput.value || "").trim().toLowerCase();
   let tags = (state.tags || []).filter((tag) => !keyword || (tag.name || "").toLowerCase().includes(keyword));
   tags = sortManagerList(tags, state.tagSortBy, state.tagSortOrder, "tag");
+  renderManagerPaginationFooter("tag", tags.length);
+  const { pageItems, rowOffset } = getManagerPageSlice(tags, "tag");
+  tags = pageItems;
   if (!tags.length) {
     els.tagTableBody.innerHTML = '<tr><td colspan="5" class="empty-cell">暂无标签</td></tr>';
   } else {
     els.tagTableBody.innerHTML = tags.map((tag, index) => `
       <tr data-id="${tag.id}">
         <td><input type="checkbox" class="manager-row-checkbox" data-manager="tag" data-id="${tag.id}" ${state.selectedTags.has(tag.id) ? "checked" : ""} /></td>
-        <td>${index + 1}</td>
+        <td>${rowOffset + index + 1}</td>
         <td><strong>${tag.name}</strong></td>
         <td>${tag.created_at || "-"}</td>
-        <td>
-          <button class="btn btn-sm" data-role="edit" data-id="${tag.id}">修改</button>
-          <button class="btn btn-sm danger-text" data-role="delete" data-id="${tag.id}">删除</button>
-        </td>
+        ${managerRowActionsCell(`
+          <button class="btn menu-btn" data-role="edit" type="button">✎ 编辑</button>
+          <button class="btn menu-btn danger-text" data-role="delete" type="button">🗑 删除</button>
+        `)}
       </tr>
     `).join("");
-    els.tagTableBody.querySelectorAll("[data-role='edit']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
-        const tag = state.tags.find(t => t.id === id);
+    els.tagTableBody.querySelectorAll("tr[data-id]").forEach((tr) => {
+      const id = parseInt(tr.dataset.id, 10);
+      const closeMenu = wireTableMoreMenuOnRow(tr);
+      tr.querySelector('[data-role="edit"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
+        const tag = state.tags.find((t) => t.id === id);
         if (tag) openCreateModal("tag", tag);
       });
-    });
-    els.tagTableBody.querySelectorAll("[data-role='delete']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
+      tr.querySelector('[data-role="delete"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
         openDeleteModal("tag", id);
       });
     });
@@ -2611,31 +2788,36 @@ function renderLanguageManager() {
   const keyword = (els.languageSearchInput.value || "").trim().toLowerCase();
   let languages = (state.languages || []).filter((language) => !keyword || (language.name || "").toLowerCase().includes(keyword));
   languages = sortManagerList(languages, state.languageSortBy, state.languageSortOrder, "language");
+  renderManagerPaginationFooter("language", languages.length);
+  const { pageItems, rowOffset } = getManagerPageSlice(languages, "language");
+  languages = pageItems;
   if (!languages.length) {
     els.languageTableBody.innerHTML = '<tr><td colspan="5" class="empty-cell">暂无语言</td></tr>';
   } else {
     els.languageTableBody.innerHTML = languages.map((language, index) => `
       <tr data-id="${language.id}">
         <td><input type="checkbox" class="manager-row-checkbox" data-manager="language" data-id="${language.id}" ${state.selectedLanguages.has(language.id) ? "checked" : ""} /></td>
-        <td>${index + 1}</td>
+        <td>${rowOffset + index + 1}</td>
         <td><strong>${language.name}</strong></td>
         <td>${language.created_at || "-"}</td>
-        <td>
-          <button class="btn btn-sm" data-role="edit" data-id="${language.id}">修改</button>
-          <button class="btn btn-sm danger-text" data-role="delete" data-id="${language.id}">删除</button>
-        </td>
+        ${managerRowActionsCell(`
+          <button class="btn menu-btn" data-role="edit" type="button">✎ 编辑</button>
+          <button class="btn menu-btn danger-text" data-role="delete" type="button">🗑 删除</button>
+        `)}
       </tr>
     `).join("");
-    els.languageTableBody.querySelectorAll("[data-role='edit']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
-        const language = state.languages.find(l => l.id === id);
+    els.languageTableBody.querySelectorAll("tr[data-id]").forEach((tr) => {
+      const id = parseInt(tr.dataset.id, 10);
+      const closeMenu = wireTableMoreMenuOnRow(tr);
+      tr.querySelector('[data-role="edit"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
+        const language = state.languages.find((l) => l.id === id);
         if (language) openCreateModal("language", language);
       });
-    });
-    els.languageTableBody.querySelectorAll("[data-role='delete']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
+      tr.querySelector('[data-role="delete"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
         openDeleteModal("language", id);
       });
     });
@@ -2660,32 +2842,37 @@ function renderPeopleManager() {
   const keyword = (els.peopleSearchInput.value || "").trim().toLowerCase();
   let people = (state.people || []).filter((person) => !keyword || (person.name || "").toLowerCase().includes(keyword));
   people = sortManagerList(people, state.peopleSortBy, state.peopleSortOrder, "people");
+  renderManagerPaginationFooter("people", people.length);
+  const { pageItems, rowOffset } = getManagerPageSlice(people, "people");
+  people = pageItems;
   if (!people.length) {
     els.peopleTableBody.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无艺人</td></tr>';
   } else {
     els.peopleTableBody.innerHTML = people.map((person, index) => `
       <tr data-id="${person.id}">
         <td><input type="checkbox" class="manager-row-checkbox" data-manager="people" data-id="${person.id}" ${state.selectedPeople.has(person.id) ? "checked" : ""} /></td>
-        <td>${index + 1}</td>
+        <td>${rowOffset + index + 1}</td>
         <td><strong>${person.name}</strong></td>
         <td>${(person.types || []).join(" / ") || "歌手"}</td>
         <td>${person.created_at || "-"}</td>
-        <td>
-          <button class="btn btn-sm" data-role="edit" data-id="${person.id}">修改</button>
-          <button class="btn btn-sm danger-text" data-role="delete" data-id="${person.id}">删除</button>
-        </td>
+        ${managerRowActionsCell(`
+          <button class="btn menu-btn" data-role="edit" type="button">✎ 编辑</button>
+          <button class="btn menu-btn danger-text" data-role="delete" type="button">🗑 删除</button>
+        `)}
       </tr>
     `).join("");
-    els.peopleTableBody.querySelectorAll("[data-role='edit']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
-        const person = state.people.find(p => p.id === id);
+    els.peopleTableBody.querySelectorAll("tr[data-id]").forEach((tr) => {
+      const id = parseInt(tr.dataset.id, 10);
+      const closeMenu = wireTableMoreMenuOnRow(tr);
+      tr.querySelector('[data-role="edit"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
+        const person = state.people.find((p) => p.id === id);
         if (person) openCreateModal("person", person);
       });
-    });
-    els.peopleTableBody.querySelectorAll("[data-role='delete']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.id);
+      tr.querySelector('[data-role="delete"]')?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeMenu();
         openDeleteModal("person", id);
       });
     });
@@ -3611,9 +3798,22 @@ wireSearchFieldClear(
   },
   () => updateAdminMusicResetVisibility()
 );
-wireSearchFieldClear(els.peopleSearchInput, els.peopleSearchClearBtn, () => renderPeopleManager());
-wireSearchFieldClear(els.tagSearchInput, els.tagSearchClearBtn, () => renderTagManager());
-wireSearchFieldClear(els.languageSearchInput, els.languageSearchClearBtn, () => renderLanguageManager());
+wireSearchFieldClear(els.peopleSearchInput, els.peopleSearchClearBtn, () => {
+  resetManagerPage("people");
+  renderPeopleManager();
+});
+wireSearchFieldClear(els.tagSearchInput, els.tagSearchClearBtn, () => {
+  resetManagerPage("tag");
+  renderTagManager();
+});
+wireSearchFieldClear(els.languageSearchInput, els.languageSearchClearBtn, () => {
+  resetManagerPage("language");
+  renderLanguageManager();
+});
+wireSearchFieldClear(els.userSearchInput, els.userSearchClearBtn, () => {
+  resetManagerPage("user");
+  renderUsersManager();
+});
 wireSearchFieldClear(els.genreSearchInput, els.genreSearchClearBtn, () => renderGenreManager());
 
 els.keywordInput.addEventListener("keydown", (event) => {
@@ -3718,10 +3918,240 @@ els.adminNavMusic?.addEventListener("click", (e) => { e.preventDefault(); showAd
 els.adminNavPeople?.addEventListener("click", (e) => { e.preventDefault(); showAdminPage("people"); loadPeople(); });
 els.adminNavTags?.addEventListener("click", (e) => { e.preventDefault(); showAdminPage("tags"); loadTags(); });
 els.adminNavLanguage?.addEventListener("click", (e) => { e.preventDefault(); showAdminPage("language"); loadLanguages(); });
+els.adminNavUsers?.addEventListener("click", (e) => { e.preventDefault(); showAdminPage("users"); loadUsers(); });
+els.userNewBtn?.addEventListener("click", () => openNewUserModal().catch(() => {}));
 function setAdminUserMenuOpen(open) {
   if (!els.adminUserMenu || !els.adminUserAvatarBtn) return;
   els.adminUserMenu.classList.toggle("hidden", !open);
   els.adminUserAvatarBtn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function openLogoutConfirmOverlay() {
+  document.getElementById("logoutConfirmOverlay")?.classList.remove("hidden");
+}
+
+function closeLogoutConfirmOverlay() {
+  document.getElementById("logoutConfirmOverlay")?.classList.add("hidden");
+}
+
+function confirmLogout() {
+  setAdminUserMenuOpen(false);
+  openLogoutConfirmOverlay();
+}
+
+async function performLogout() {
+  closeLogoutConfirmOverlay();
+  try {
+    await request("/auth/logout", { method: "POST" });
+  } catch {
+    /* still redirect */
+  }
+  window.location.href = "/login";
+}
+
+function renderAdminUserSidebar() {
+  const me = state.currentUser;
+  const nameEl = document.querySelector("#adminUserDisplayName");
+  const roleEl = document.querySelector("#adminUserRoleLabel");
+  const btn = els.adminUserAvatarBtn;
+  if (nameEl && me) nameEl.textContent = me.display_name || me.username;
+  if (roleEl && me) roleEl.textContent = me.role === "admin" ? "超级管理员" : "普通用户";
+  if (btn && me) {
+    if (me.avatar_url) {
+      btn.style.backgroundImage = `url(${me.avatar_url})`;
+      btn.style.backgroundSize = "cover";
+      btn.style.backgroundPosition = "center";
+      btn.textContent = "";
+    } else {
+      btn.style.backgroundImage = "";
+      btn.textContent = (me.display_name || me.username || "?").charAt(0).toUpperCase();
+    }
+  }
+}
+
+async function ensureAdminAuth() {
+  const me = await request("/auth/me");
+  if (me.role !== "admin") {
+    window.location.href = "/";
+    throw new Error("需要管理员权限");
+  }
+  state.currentUser = me;
+  renderAdminUserSidebar();
+  return me;
+}
+
+async function loadUsers() {
+  try {
+    state.users = await request("/admin/users");
+  } catch (err) {
+    state.users = [];
+    showToast("加载用户失败: " + (err && err.message ? err.message : String(err)), "error");
+  }
+  renderUsersManager();
+}
+
+function renderUsersManager() {
+  if (!els.userTableBody) return;
+  const keyword = (els.userSearchInput?.value || "").trim().toLowerCase();
+  let users = (state.users || []).filter((u) => {
+    if (!keyword) return true;
+    const username = (u.username || "").toLowerCase();
+    const nickname = (u.nickname || "").toLowerCase();
+    return username.includes(keyword) || nickname.includes(keyword);
+  });
+  renderManagerPaginationFooter("user", users.length);
+  const { pageItems, rowOffset } = getManagerPageSlice(users, "user");
+  users = pageItems;
+  if (!users.length) {
+    els.userTableBody.innerHTML = '<tr><td colspan="7" class="empty-cell">暂无用户</td></tr>';
+    return;
+  }
+  els.userTableBody.innerHTML = users
+    .map(
+      (u, index) => `
+      <tr data-id="${u.id}">
+        <td>${rowOffset + index + 1}</td>
+        <td><strong>${escapeHtml(u.username)}</strong></td>
+        <td>${escapeHtml(u.nickname || "—")}</td>
+        <td>${u.role === "admin" ? "管理员" : "普通用户"}</td>
+        <td>${u.is_active ? "启用" : "禁用"}</td>
+        <td>${u.created_at || "—"}</td>
+        ${managerRowActionsCell(`
+          <button class="btn menu-btn" data-role="user-role" type="button">切换角色</button>
+          ${u.is_super_admin ? "" : `<button class="btn menu-btn" data-role="user-toggle" type="button">${u.is_active ? "禁用账号" : "启用账号"}</button>`}
+          <button class="btn menu-btn" data-role="user-reset-pw" type="button">重置密码</button>
+          <button class="btn menu-btn danger-text" data-role="user-delete" type="button">🗑 删除</button>
+        `)}
+      </tr>`
+    )
+    .join("");
+  els.userTableBody.querySelectorAll("tr[data-id]").forEach((tr) => {
+    const id = parseInt(tr.dataset.id, 10);
+    const u = state.users.find((x) => x.id === id);
+    if (!u) return;
+    const closeMenu = wireTableMoreMenuOnRow(tr);
+    tr.querySelector('[data-role="user-role"]')?.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      closeMenu();
+      const next = u.role === "admin" ? "user" : "admin";
+      const ok = await openModal({
+        title: "修改角色",
+        message: `将「${u.username}」设为${next === "admin" ? "管理员" : "普通用户"}？`,
+        confirmText: "确定",
+        cancelText: "取消",
+      });
+      if (ok !== true) return;
+      try {
+        await request(`/admin/users/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: next }),
+        });
+        await loadUsers();
+        showToast("角色已更新", "info");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+    tr.querySelector('[data-role="user-toggle"]')?.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      closeMenu();
+      try {
+        await request(`/admin/users/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: !u.is_active }),
+        });
+        await loadUsers();
+        showToast("状态已更新", "info");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+    tr.querySelector('[data-role="user-reset-pw"]')?.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      closeMenu();
+      const pw = await openModal({
+        title: "重置密码",
+        message: "输入新密码（须满足复杂度要求）",
+        withInput: true,
+        confirmText: "确定",
+        cancelText: "取消",
+      });
+      if (pw == null || !String(pw).trim()) return;
+      try {
+        await request(`/admin/users/${id}/reset-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ new_password: String(pw).trim() }),
+        });
+        showToast("密码已重置", "info");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+    tr.querySelector('[data-role="user-delete"]')?.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      closeMenu();
+      const ok = await openModal({
+        title: "删除用户",
+        message: `确定软删除用户「${u.username}」？`,
+        confirmText: "删除",
+        cancelText: "取消",
+      });
+      if (ok !== true) return;
+      try {
+        await request(`/admin/users/${id}`, { method: "DELETE" });
+        await loadUsers();
+        showToast("用户已删除", "info");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  });
+}
+
+async function openNewUserModal() {
+  const username = await openModal({
+    title: "新建用户",
+    message: "用户名（3–32 位字母、数字、下划线）",
+    withInput: true,
+    confirmText: "下一步",
+    cancelText: "取消",
+  });
+  if (username == null || !String(username).trim()) return;
+  const password = await openModal({
+    title: "初始密码",
+    message: "至少 8 位，含大小写、数字与特殊字符",
+    withInput: true,
+    confirmText: "创建",
+    cancelText: "取消",
+  });
+  if (password == null || !String(password).trim()) return;
+  const asAdmin = await openModal({
+    title: "角色",
+    message: "是否设为管理员？选「确定」为管理员，「取消」为普通用户",
+    withInput: false,
+    confirmText: "管理员",
+    cancelText: "普通用户",
+  });
+  if (asAdmin === null) return;
+  const role = asAdmin === true ? "admin" : "user";
+  try {
+    await request("/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: String(username).trim(),
+        password: String(password).trim(),
+        role,
+      }),
+    });
+    await loadUsers();
+    showToast("用户已创建", "info");
+  } catch (err) {
+    showToast(err.message, "error");
+  }
 }
 
 els.adminUserAvatarBtn?.addEventListener("click", (e) => {
@@ -3734,12 +4164,25 @@ els.goFrontendBtn?.addEventListener("click", () => {
   setAdminUserMenuOpen(false);
   window.location.href = "/";
 });
-els.tagSearchInput?.addEventListener("input", renderTagManager);
+els.tagSearchInput?.addEventListener("input", () => {
+  resetManagerPage("tag");
+  renderTagManager();
+});
 els.tagNewBtn?.addEventListener("click", () => openCreateModal("tag"));
-els.peopleSearchInput?.addEventListener("input", renderPeopleManager);
+els.peopleSearchInput?.addEventListener("input", () => {
+  resetManagerPage("people");
+  renderPeopleManager();
+});
 els.peopleNewBtn?.addEventListener("click", () => openCreateModal("person"));
-els.languageSearchInput?.addEventListener("input", renderLanguageManager);
+els.languageSearchInput?.addEventListener("input", () => {
+  resetManagerPage("language");
+  renderLanguageManager();
+});
 els.languageNewBtn?.addEventListener("click", () => openCreateModal("language"));
+els.userSearchInput?.addEventListener("input", () => {
+  resetManagerPage("user");
+  renderUsersManager();
+});
 els.genreSearchInput?.addEventListener("input", renderGenreManager);
 els.genreNewBtn?.addEventListener("click", () => openCreateModal("genre"));
 
@@ -3772,6 +4215,7 @@ bindManagerSelectAll("people", els.selectAllPeople, els.peopleTableBody, "select
 bindManagerSelectAll("tag", els.selectAllTags, els.tagTableBody, "selectedTags");
 bindManagerSelectAll("language", els.selectAllLanguages, els.languageTableBody, "selectedLanguages");
 bindManagerSelectAll("genre", els.selectAllGenres, els.genreTableBody, "selectedGenres");
+bindManagerPaginationControls();
 els.peopleBatchDeleteBtn?.addEventListener("click", () => openBatchDeleteModal("people"));
 els.tagBatchDeleteBtn?.addEventListener("click", () => openBatchDeleteModal("tag"));
 els.languageBatchDeleteBtn?.addEventListener("click", () => openBatchDeleteModal("language"));
@@ -3792,6 +4236,7 @@ document.addEventListener("click", (e) => {
     state[sortByKey] = field;
     state[sortOrderKey] = "asc";
   }
+  if (REF_MANAGER_PAGINATION[manager]) resetManagerPage(manager);
   if (manager === "people") renderPeopleManager();
   else if (manager === "tag") renderTagManager();
   else if (manager === "language") renderLanguageManager();
@@ -3902,9 +4347,18 @@ ADMIN_QUICK_FILTER_SELECTS().forEach((el) => {
   el?.addEventListener("change", onQuickFilterChange);
 });
 initAdminMusicQuickFilters();
-els.logoutBtn?.addEventListener("click", () => {
-  setAdminUserMenuOpen(false);
-  showToast("已退出（演示：刷新页面可重新进入）", "info");
+els.logoutBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  confirmLogout();
+});
+document.getElementById("logoutConfirmCloseBtn")?.addEventListener("click", closeLogoutConfirmOverlay);
+document.getElementById("logoutConfirmCancelBtn")?.addEventListener("click", closeLogoutConfirmOverlay);
+document.getElementById("logoutConfirmBtn")?.addEventListener("click", () => {
+  performLogout().catch(() => {});
+});
+const logoutConfirmOverlayEl = document.getElementById("logoutConfirmOverlay");
+logoutConfirmOverlayEl?.addEventListener("click", (e) => {
+  if (e.target === logoutConfirmOverlayEl) closeLogoutConfirmOverlay();
 });
 els.editLyricReplaceBtn?.addEventListener("click", () => {
   if (!state.editingSongId) {
@@ -3939,6 +4393,13 @@ document.querySelectorAll("[data-nav-placeholder]").forEach((btn) => {
   btn.addEventListener("click", () => showToast(`${btn.textContent?.trim() || "该功能"}即将推出`, "info"));
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const logoutOverlay = document.getElementById("logoutConfirmOverlay");
+    if (logoutOverlay && !logoutOverlay.classList.contains("hidden")) {
+      closeLogoutConfirmOverlay();
+      return;
+    }
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     els.keywordInput?.focus();
@@ -3992,16 +4453,34 @@ applyAppVersion();
 initAdminSidebarCollapse();
 initAdminStudioPlayer();
 
-Promise.all([
-  loadTags(),
-  loadLanguages(),
-  loadGenres(),
-  loadPeople(),
-  loadFilterOptions(),
-  loadSongs(),
-]).then(() => {
-  populateQuickFilterOptions();
-  updateAdminStats();
-}).catch((err) => {
-  showToast("加载失败: " + (err && err.message ? err.message : String(err)), "error");
+ensureAdminAuth()
+  .then(() =>
+    Promise.all([
+      loadTags(),
+      loadLanguages(),
+      loadGenres(),
+      loadPeople(),
+      loadFilterOptions(),
+      loadSongs(),
+    ])
+  )
+  .then(() => {
+    populateQuickFilterOptions();
+    updateAdminStats();
+  })
+  .catch((err) => {
+    if (err && err.message !== "未登录") {
+      showToast("加载失败: " + (err && err.message ? err.message : String(err)), "error");
+    }
+  });
+
+window.addEventListener("focus", () => {
+  if (state.currentUser) {
+    request("/auth/me")
+      .then((me) => {
+        state.currentUser = me;
+        renderAdminUserSidebar();
+      })
+      .catch(() => {});
+  }
 });

@@ -90,17 +90,46 @@ class ScanJob(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    nickname: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    avatar_object_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    role: Mapped[str] = mapped_column(String(16), default="user", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_cn_naive, onupdate=now_cn_naive
+    )
+
+
+class UserSession(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
+
+
 class Playlist(Base):
     __tablename__ = "playlists"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_cn_naive)
 
     items: Mapped[list["PlaylistItem"]] = relationship(
         "PlaylistItem", back_populates="playlist", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_playlist_user_name"),)
 
 
 class PlaylistItem(Base):

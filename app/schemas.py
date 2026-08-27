@@ -294,3 +294,56 @@ class PlaylistDetailOut(BaseModel):
     id: int
     name: str
     songs: list[SongOut]
+
+
+class AuthLoginIn(BaseModel):
+    username: str
+    password: str
+
+
+class AuthMeOut(BaseModel):
+    id: int
+    username: str
+    nickname: Optional[str] = None
+    display_name: str
+    role: str
+    is_active: bool
+    avatar_url: Optional[str] = None
+
+
+class UserProfileUpdateIn(BaseModel):
+    username: Optional[str] = None
+    nickname: Optional[str] = None
+
+
+class UserPasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    nickname: Optional[str] = None
+    display_name: str
+    role: str
+    is_active: bool
+    is_super_admin: bool
+    created_at: datetime
+
+
+class AdminUserCreate(BaseModel):
+    username: str
+    password: str
+    nickname: Optional[str] = None
+    role: str = "user"
+
+
+class AdminUserUpdate(BaseModel):
+    nickname: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AdminUserResetPassword(BaseModel):
+    new_password: str

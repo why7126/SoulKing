@@ -1,0 +1,128 @@
+next_id: 19
+entries:
+  - id: REQ-0001-application-auth
+    title: 应用认证与会话管理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0001-application-auth
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0002-single-tenant-trust-model
+    title: 单租户多账号信任模型
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0002-single-tenant-trust-model
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0003-web-static-client-shells
+    title: Web 静态前后台客户端壳
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0003-web-static-client-shells
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0004-music-ingestion
+    title: 音乐扫描上传与入库
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0004-music-ingestion
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0005-song-catalog-and-metadata
+    title: 曲库查询与歌曲元数据管理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0005-song-catalog-and-metadata
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0006-song-files-and-storage-lifecycle
+    title: 歌曲文件与对象存储生命周期
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0006-song-files-and-storage-lifecycle
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0007-audio-playback-and-download
+    title: 音频播放与下载
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0007-audio-playback-and-download
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0008-song-lyrics
+    title: LRC 歌词管理与播放展示
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0008-song-lyrics
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0009-playlist-management
+    title: 歌单管理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0009-playlist-management
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0010-reference-data-taxonomy
+    title: 参考数据与分类体系管理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0010-reference-data-taxonomy
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0011-user-administration
+    title: 后台用户管理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0011-user-administration
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0012-user-self-service
+    title: 前台用户自助资料维护
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0012-user-self-service
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0013-library-deduplication-and-merge
+    title: 曲库去重与合并治理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0013-library-deduplication-and-merge
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0014-object-storage-layout
+    title: MinIO 单桶对象存储布局
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0014-object-storage-layout
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0015-admin-bulk-export
+    title: 管理端音频批量导出
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0015-admin-bulk-export
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0016-external-integrations
+    title: 外部集成边界治理
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0016-external-integrations
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0017-sidebar-user-menu-popout
+    title: 收起侧栏用户菜单弹出布局
+    status: archived
+    priority: P1
+    path: issues/requirements/archive/REQ-0017-sidebar-user-menu-popout
+    created_at: 2026-07-15 00:00:00
+    updated_at: 2026-07-15 00:00:00
+  - id: REQ-0018-ai-usage-manual-map-refresh
+    title: 固化 AI Usage 手动映射与刷新流程
+    status: captured
+    priority: P2
+    path: issues/requirements/plan/REQ-0018-ai-usage-manual-map-refresh
+    created_at: 2026-08-27 10:50:03
+    updated_at: 2026-08-27 10:50:03

@@ -1,31 +1,102 @@
-schema: spec-driven
+project: ProjectSoulKing
+project_name: ProjectSoulKing
+enabled: true
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+spec_dir: openspec/specs
+change_dir: openspec/changes
+archive_dir: openspec/archive
+project_doc: openspec/project.md
+testing_mapping: openspec/testing-mapping.md
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+language: zh-CN
+default_locale: zh-CN
+documentation_language: 简体中文
 
-context:
-  语言：中文（简体）
-  所有 OpenSpec 文档和 AI 交互默认使用简体中文。
+change:
+  id_pattern: "^(add|change|fix|refactor|remove|optimize|align|protect|consolidate)-[a-z0-9][a-z0-9-]+$"
+  allowed_prefixes:
+    - add
+    - change
+    - fix
+    - refactor
+    - remove
+    - optimize
+    - align
+    - protect
+    - consolidate
+  required_files:
+    - proposal.md
+    - design.md
+    - tasks.md
+  spec_delta_dir: specs
+  status_flow:
+    - draft
+    - proposed
+    - approved
+    - implemented
+    - archived
 
-  文档语言规范：
-  - proposal.md、design.md、tasks.md、spec.md 默认使用简体中文撰写。
-  - 需求描述、背景说明、设计说明、任务说明、验收场景均使用中文。
-  - 代码文件名、路径、命令、API 名称、类名、函数名、数据库表名保持原文。
-  - 技术术语如 API、JWT、OAuth、Webhook、REST、GraphQL 可以保留英文。
-  - 不要中英文混杂地写长句，除非英文是代码、命令、接口或专有名词。
+spec:
+  modules:
+    - application-auth
+    - audio-playback-and-download
+    - external-integrations
+    - library-deduplication-and-merge
+    - music-ingestion
+    - object-storage-layout
+    - playlist-management
+    - reference-data-taxonomy
+    - song-catalog-and-metadata
+    - song-files-and-storage-lifecycle
+    - song-lyrics
+    - user-administration
+    - user-self-service
+    - web-static-client-shells
+  require_scenarios: true
+  require_acceptance: true
+  require_traceability: true
+  allow_unimplemented_in_specs: false
+
+commands:
+  validate: "openspec validate --strict"
+  propose: "cursor command opsx-propose"
+  apply: "cursor command opsx-apply"
+  archive: "cursor command opsx-archive"
+  test_mapping_validate: "python scripts/validate-generated-docs.py --strict"
+
+archive:
+  require_completed_tasks: true
+  require_tests_recorded: true
+  require_docs_synced: true
+  require_specs_updated: true
+
+ai_guardrails:
+  must_read:
+    - AGENTS.md
+    - openspec/project.md
+    - rules/global.md
+  must_sync_when_changed:
+    - README.md
+    - AGENTS.md
+    - project.yaml
+    - docs/README.md
+    - docs/00-product-overview.md
+    - docs/01-architecture.md
+    - docs/02-deployment.md
+    - docs/03-api-index.md
+    - docs/04-database-design.md
+    - docs/07-object-storage-strategy.md
+    - rules/document-governance.md
+    - rules/testing.md
+  forbidden:
+    - do_not_edit_code_without_reading_target_change
+    - do_not_modify_active_specs_without_change_trace
+    - do_not_archive_without_tests_and_docs_sync
+    - do_not_keep_source_project_assumptions
+
+external_tracking:
+  enabled: true
+  system: local-files
+  requirement_root: issues/requirements
+  bug_root: issues/bugs
+  sprint_root: iterations

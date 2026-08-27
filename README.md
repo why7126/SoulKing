@@ -2,6 +2,19 @@
 
 Python + FastAPI + SQLite + S3(MinIO) MVP for personal music management.
 
+## Harness / AI 协作入口
+
+本仓库已接入 ProjectSoulKing Harness 工程：
+
+- AI 工作入口：[AGENTS.md](AGENTS.md)
+- 项目事实源：[project.yaml](project.yaml)
+- 长期文档索引：[docs/README.md](docs/README.md)
+- 工程规则：[rules/](rules/)
+- OpenSpec 项目说明：[openspec/project.md](openspec/project.md)
+- Agent 技能入口：[.agents/skills/](.agents/skills/)
+
+变更业务能力、接口契约、数据结构、权限边界、对象存储或部署拓扑时，应先创建 `openspec/changes/<change-id>/`，并按 `issues/`、`iterations/`、`openspec/` 的流程沉淀记录。
+
 ## Features
 
 - Local directory scan and import to object storage（同内容 `sha256+file_size` 已存在则跳过；同歌名+同主艺人已有 `Song` 则只追加音频文件，不新建歌曲）
@@ -77,13 +90,39 @@ docker compose up --build
 - `GET /song-files/{song_file_id}/stream`
 - `GET /song-files/{song_file_id}/download`
 
+## MinIO 单桶迁移（`music-files` / `music-covers` → `soulking`）
+
+升级后应用仅使用一个桶（默认 `soulking`，环境变量 `S3_BUCKET_MUSIC`）。**必须先迁移对象，再改 `.env` 并重启应用**，否则播放与头像会 404。
+
+1. 确认 ProjectMinio 已启动（`http://127.0.0.1:9000` 可访问）。
+2. 在仓库根目录执行（本机跑脚本时用 `127.0.0.1`，脚本会自动把 `.env` 里的 `host.docker.internal` 换成 `127.0.0.1`）：
+
+```bash
+python scripts/migrate_minio_to_soulking.py --dry-run   # 预览
+python scripts/migrate_minio_to_soulking.py             # 复制到 soulking 并校验对象数
+python scripts/migrate_minio_to_soulking.py --delete-old-buckets   # 确认无误后删除旧桶
+```
+
+3. 将 `.env` 中 `S3_BUCKET_MUSIC=soulking`，删除已废弃的 `S3_BUCKET_COVERS`（若仍存在）。
+4. 重启应用；`ensure_buckets` 仅确保 `soulking` 存在。
+
+桶内布局：音频/歌词与头像键规则不变；原 `music-covers` 桶内对象位于 `covers/` 前缀下。
+
 ## 故障排除
 
 - **`/admin` 连不上、进程启动失败**：请看终端日志。若为 `unable to open database file`，说明 SQLite 路径不可用。`.env` 里 `DATABASE_URL=sqlite:////data/music.db` **仅适合 Docker**（且需挂载 `./data:/data`）。在 **本机直接运行** `uvicorn` 时请改为 `DATABASE_URL=sqlite:///./data/music.db`（程序会自动创建父目录）。可先访问 `http://localhost:8000/health` 确认服务已起。
-- **对象存储连接失败**：先确认 ProjectMinio 已启动且 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/minio/health/live` 返回 `200`。Docker 运行应用时 `.env` 中应为 `S3_ENDPOINT_URL=http://host.docker.internal:9000`。应用启动时会 **最多约 90 秒** 内重试连接 MinIO（可先起容器再起 MinIO）；若仍失败，日志会提示先启动 ProjectMinio。本机直接 `uvicorn` 时用 `http://127.0.0.1:9000`。
+- **对象存储连接失败**：先确认 ProjectMinio 已启动且 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/minio/health/live` 返回 `200`。Docker 运行应用时 `.env` 中应为 `S3_ENDPOINT_URL=http://host.docker.internal:9000`，并设置 `S3_PUBLIC_ENDPOINT_URL=http://127.0.0.1:9000`（供浏览器加载 presigned 头像/资源）。应用启动时会 **最多约 90 秒** 内重试连接 MinIO（可先起容器再起 MinIO）；若仍失败，日志会提示先启动 ProjectMinio。本机直接 `uvicorn` 时用 `http://127.0.0.1:9000`（可不设 `S3_PUBLIC_ENDPOINT_URL`）。
+- **头像 Network 显示已拦截、URL 含 `host.docker.internal`**：浏览器无法稳定访问该主机名。在 `.env` 增加 `S3_PUBLIC_ENDPOINT_URL=http://127.0.0.1:9000` 后重启应用，再刷新页面。
+
+## 用户登录与账号
+
+- 除 `/login`、`POST /auth/login`、`GET /health` 与静态资源外，业务 API 须携带登录后的会话 Cookie。
+- 首次**空库**启动时，根据 `.env` 中的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 创建种子管理员（默认见 `.env.example`：`admin` / `Admin123!`）。密码须至少 8 位并含大小写、数字与特殊字符。
+- 打开 `http://localhost:8000/login` 登录；前台侧栏可改个人资料与密码；管理员可进入 `/admin` 并在 **用户管理** 中创建其他账号（不开放自助注册）。
+- 升级已有数据库时，历史歌单会归属种子管理员账号。
 
 ## Notes
 
 - 使用 Docker 时数据库在容器内路径 `/data/music.db`，对应宿主机 `./data/music.db`。
-- 音频写入 **ProjectMinio** 中配置的桶（`S3_BUCKET_*`）；本仓库 compose 不包含 MinIO。
-- This MVP is single-user and does not include auth.
+- 音频与头像写入 **ProjectMinio** 的 `S3_BUCKET_MUSIC` 桶（默认 `soulking`）；本仓库 compose 不包含 MinIO。
+- This MVP includes cookie-based auth and an admin console; it is still intended for private deployment.

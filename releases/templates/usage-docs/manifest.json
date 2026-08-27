@@ -1,0 +1,7 @@
+{
+  "version": "{{VERSION}}",
+  "generated_at": "{{GENERATED_AT}}",
+  "source_version": "{{SOURCE_VERSION}}",
+  "pages": [],
+  "screenshots": []
+}

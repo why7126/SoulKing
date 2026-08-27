@@ -13,6 +13,7 @@ import {
 const state = {
   songs: [],
   playlists: [],
+  currentUser: null,
   filters: null,
   librarySongCount: 0,
   selectedPlaylistId: null,
@@ -36,6 +37,8 @@ const state = {
   lyricLines: [],
   lyricSongId: null,
   lyricContent: "",
+  /** Object URL for profile modal file-picker preview */
+  profileAvatarObjectUrl: null,
 };
 
 let frontAudioPlayGeneration = 0;
@@ -154,13 +157,30 @@ function resolveMediaSrc(pathOrUrl) {
   return getApiUrl(s.startsWith("/") ? s : `/${s}`);
 }
 
+function redirectToLogin() {
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/login?next=${next}`;
+}
+
 async function request(path, options = {}) {
   const url = getApiUrl(path);
+  const opts = { credentials: "include", ...options };
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+      redirectToLogin();
+      throw new Error("未登录");
+    }
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(text || `Request failed: ${res.status}`);
+      let msg = text || `Request failed: ${res.status}`;
+      try {
+        const j = JSON.parse(text);
+        if (typeof j.detail === "string") msg = j.detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
     }
     if (res.status === 204) return null;
     return res.json();
@@ -168,6 +188,132 @@ async function request(path, options = {}) {
     if (err.name === "TypeError" && (err.message === "Failed to fetch" || err.message.includes("fetch"))) {
       throw new Error("无法连接服务器，请确认后端服务已启动并刷新页面");
     }
+    throw err;
+  }
+}
+
+async function loadAuthMe() {
+  state.currentUser = await request("/auth/me");
+  return state.currentUser;
+}
+
+function applyAvatarToElement(el, rawUrl) {
+  if (!el) return;
+  if (rawUrl) {
+    el.style.backgroundImage = `url("${rawUrl}")`;
+    el.style.backgroundSize = "cover";
+    el.style.backgroundPosition = "center";
+    el.style.backgroundRepeat = "no-repeat";
+    el.textContent = "";
+  } else {
+    el.style.backgroundImage = "";
+    el.style.backgroundSize = "";
+    el.style.backgroundPosition = "";
+    el.style.backgroundRepeat = "";
+  }
+}
+
+function revokeProfileAvatarPreviewUrl() {
+  if (state.profileAvatarObjectUrl) {
+    URL.revokeObjectURL(state.profileAvatarObjectUrl);
+    state.profileAvatarObjectUrl = null;
+  }
+}
+
+function renderFrontUserSidebar() {
+  const me = state.currentUser;
+  const nameEl = document.querySelector("#frontUserDisplayName");
+  const btn = els.frontUserMenuBtn;
+  if (nameEl && me) nameEl.textContent = me.display_name || me.username;
+  if (btn && me) {
+    if (me.avatar_url) {
+      applyAvatarToElement(btn, me.avatar_url);
+    } else {
+      applyAvatarToElement(btn, null);
+      const letter = (me.display_name || me.username || "?").charAt(0).toUpperCase();
+      btn.textContent = letter;
+    }
+  }
+  if (els.frontUserAdminBtn) {
+    els.frontUserAdminBtn.classList.toggle("hidden", !me || me.role !== "admin");
+  }
+}
+
+function renderProfileAvatarPreview(me, previewUrl = null) {
+  const el = document.getElementById("profileAvatarPreview");
+  if (!el) return;
+  if (previewUrl) {
+    applyAvatarToElement(el, previewUrl);
+    return;
+  }
+  if (me?.avatar_url) {
+    applyAvatarToElement(el, me.avatar_url);
+    return;
+  }
+  applyAvatarToElement(el, null);
+  if (me) {
+    el.textContent = (me.display_name || me.username || "?").charAt(0).toUpperCase();
+  } else {
+    el.textContent = "?";
+  }
+}
+
+function passwordMeetsComplexity(password) {
+  if (!password || password.length < 8) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/\d/.test(password)) return false;
+  if (!/[^A-Za-z0-9]/.test(password)) return false;
+  return true;
+}
+
+function initPasswordToggles(container) {
+  if (!container) return;
+  container.querySelectorAll(".password-input").forEach((wrap) => {
+    const input = wrap.querySelector("input");
+    const btn = wrap.querySelector(".password-toggle");
+    if (!input || !btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-pressed", show ? "true" : "false");
+      btn.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+      btn.classList.toggle("password-toggle--visible", show);
+    });
+  });
+}
+
+function resetPasswordToggles(container) {
+  if (!container) return;
+  container.querySelectorAll(".password-input").forEach((wrap) => {
+    const input = wrap.querySelector("input");
+    const btn = wrap.querySelector(".password-toggle");
+    if (!input || !btn) return;
+    input.type = "password";
+    btn.setAttribute("aria-pressed", "false");
+    btn.setAttribute("aria-label", "显示密码");
+    btn.classList.remove("password-toggle--visible");
+  });
+}
+
+function updatePasswordSaveEnabled() {
+  const saveBtn = document.getElementById("passwordSaveBtn");
+  if (!saveBtn) return;
+  const current = document.getElementById("passwordCurrentInput")?.value || "";
+  const next = document.getElementById("passwordNewInput")?.value || "";
+  const confirm = document.getElementById("passwordNewConfirmInput")?.value || "";
+  const ok =
+    current.length > 0 && next.length > 0 && next === confirm && passwordMeetsComplexity(next);
+  saveBtn.disabled = !ok;
+}
+
+async function ensureAuth() {
+  try {
+    await loadAuthMe();
+    renderFrontUserSidebar();
+  } catch (err) {
+    if (err.message !== "未登录") showToast(err.message, "error");
     throw err;
   }
 }
@@ -509,6 +655,132 @@ function handleFrontUserMenuItem(action) {
   if (performance.now() < frontUserMenuInteractAfter) return;
   setFrontUserMenuOpen(false);
   action();
+}
+
+function openLogoutConfirmOverlay() {
+  document.getElementById("logoutConfirmOverlay")?.classList.remove("hidden");
+}
+
+function closeLogoutConfirmOverlay() {
+  document.getElementById("logoutConfirmOverlay")?.classList.add("hidden");
+}
+
+function confirmLogout() {
+  openLogoutConfirmOverlay();
+}
+
+async function performLogout() {
+  closeLogoutConfirmOverlay();
+  try {
+    await request("/auth/logout", { method: "POST" });
+  } catch {
+    /* still redirect */
+  }
+  window.location.href = "/login";
+}
+
+function openProfileOverlay() {
+  const me = state.currentUser;
+  if (!me) return;
+  revokeProfileAvatarPreviewUrl();
+  document.getElementById("profileNicknameInput").value = me.nickname || "";
+  const usernameEl = document.getElementById("profileUsernameDisplay");
+  if (usernameEl) usernameEl.textContent = me.username || "";
+  document.getElementById("profileAvatarInput").value = "";
+  renderProfileAvatarPreview(me);
+  document.getElementById("profileOverlay")?.classList.remove("hidden");
+}
+
+function closeProfileOverlay() {
+  revokeProfileAvatarPreviewUrl();
+  document.getElementById("profileOverlay")?.classList.add("hidden");
+}
+
+function openPasswordOverlay() {
+  const overlay = document.getElementById("passwordOverlay");
+  document.getElementById("passwordCurrentInput").value = "";
+  document.getElementById("passwordNewInput").value = "";
+  document.getElementById("passwordNewConfirmInput").value = "";
+  resetPasswordToggles(overlay);
+  updatePasswordSaveEnabled();
+  overlay?.classList.remove("hidden");
+}
+
+function closePasswordOverlay() {
+  document.getElementById("passwordOverlay")?.classList.add("hidden");
+}
+
+async function saveProfile() {
+  const nickname = document.getElementById("profileNicknameInput")?.value?.trim() ?? "";
+  const fileInput = document.getElementById("profileAvatarInput");
+  try {
+    await request("/users/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname }),
+    });
+    const file = fileInput?.files?.[0];
+    if (file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const uploaded = await fetch(getApiUrl("/users/me/avatar"), {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      }).then(async (res) => {
+        if (res.status === 401) redirectToLogin();
+        if (!res.ok) {
+          const t = await res.text();
+          let msg = t;
+          try {
+            const j = JSON.parse(t);
+            if (typeof j.detail === "string") msg = j.detail;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(msg);
+        }
+        return res.json();
+      });
+      state.currentUser = uploaded;
+      revokeProfileAvatarPreviewUrl();
+      renderFrontUserSidebar();
+      renderProfileAvatarPreview(state.currentUser);
+    } else {
+      await loadAuthMe();
+      renderFrontUserSidebar();
+      renderProfileAvatarPreview(state.currentUser);
+    }
+    closeProfileOverlay();
+    showToast("资料已保存", "info");
+  } catch (err) {
+    showToast(err.message || "保存失败", "error");
+  }
+}
+
+async function savePassword() {
+  const current_password = document.getElementById("passwordCurrentInput")?.value || "";
+  const new_password = document.getElementById("passwordNewInput")?.value || "";
+  const confirm = document.getElementById("passwordNewConfirmInput")?.value || "";
+  if (new_password !== confirm) {
+    showToast("两次输入的新密码不一致", "error");
+    return;
+  }
+  if (!passwordMeetsComplexity(new_password)) {
+    showToast("新密码不满足复杂度要求", "error");
+    return;
+  }
+  try {
+    await request("/users/me/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password, new_password }),
+    });
+    closePasswordOverlay();
+    showToast("密码已更新", "info");
+  } catch (err) {
+    showToast(err.message || "修改失败", "error");
+  }
 }
 
 const FRONT_SIDEBAR_COLLAPSED_KEY = "pm.sidebarCollapsed.front";
@@ -1927,12 +2199,32 @@ els.playerVolume?.addEventListener("input", () => {
 });
 els.frontUserProfileBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  handleFrontUserMenuItem(() => showToast("个人资料即将接入", "info"));
+  handleFrontUserMenuItem(() => openProfileOverlay());
 });
 els.frontUserPasswordBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  handleFrontUserMenuItem(() => showToast("修改密码即将接入", "info"));
+  handleFrontUserMenuItem(() => openPasswordOverlay());
 });
+document.getElementById("profileCloseBtn")?.addEventListener("click", closeProfileOverlay);
+document.getElementById("profileCancelBtn")?.addEventListener("click", closeProfileOverlay);
+document.getElementById("profileSaveBtn")?.addEventListener("click", () => saveProfile().catch(() => {}));
+document.getElementById("profileAvatarInput")?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  revokeProfileAvatarPreviewUrl();
+  if (!file) {
+    renderProfileAvatarPreview(state.currentUser);
+    return;
+  }
+  state.profileAvatarObjectUrl = URL.createObjectURL(file);
+  renderProfileAvatarPreview(state.currentUser, state.profileAvatarObjectUrl);
+});
+["passwordCurrentInput", "passwordNewInput", "passwordNewConfirmInput"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("input", updatePasswordSaveEnabled);
+});
+document.getElementById("passwordCloseBtn")?.addEventListener("click", closePasswordOverlay);
+document.getElementById("passwordCancelBtn")?.addEventListener("click", closePasswordOverlay);
+document.getElementById("passwordSaveBtn")?.addEventListener("click", () => savePassword().catch(() => {}));
+initPasswordToggles(document.getElementById("passwordOverlay"));
 els.frontUserAdminBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   handleFrontUserMenuItem(() => {
@@ -1941,7 +2233,17 @@ els.frontUserAdminBtn?.addEventListener("click", (e) => {
 });
 els.frontUserLogoutBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  handleFrontUserMenuItem(() => showToast("已退出（演示：刷新页面可重新进入）", "info"));
+  handleFrontUserMenuItem(() => {
+    confirmLogout();
+  });
+});
+document.getElementById("logoutConfirmCloseBtn")?.addEventListener("click", closeLogoutConfirmOverlay);
+document.getElementById("logoutConfirmCancelBtn")?.addEventListener("click", closeLogoutConfirmOverlay);
+document.getElementById("logoutConfirmBtn")?.addEventListener("click", () => {
+  performLogout().catch(() => {});
+});
+document.getElementById("logoutConfirmOverlay")?.addEventListener("click", (e) => {
+  if (e.target?.id === "logoutConfirmOverlay") closeLogoutConfirmOverlay();
 });
 els.frontPageFirstBtn?.addEventListener("click", () => {
   if (state.songPage <= 1) return;
@@ -1999,6 +2301,13 @@ document.querySelectorAll("[data-sk-nav]").forEach((btn) => {
   });
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const logoutOverlay = document.getElementById("logoutConfirmOverlay");
+    if (logoutOverlay && !logoutOverlay.classList.contains("hidden")) {
+      closeLogoutConfirmOverlay();
+      return;
+    }
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     if (state.mainNav === "library") {
@@ -2186,6 +2495,7 @@ document.getElementById("pdSongSelectAll")?.addEventListener("change", (e) => {
 
 async function initPage() {
   try {
+    await ensureAuth();
     if (els.audioPlayer && els.playerVolume) {
       els.audioPlayer.volume = Number(els.playerVolume.value) / 100;
     }
@@ -2227,3 +2537,6 @@ initFrontSidebarCollapse();
 initFrontUserMenu();
 initPlayerLyricsToggle();
 initPage();
+window.addEventListener("focus", () => {
+  if (state.currentUser) loadAuthMe().then(renderFrontUserSidebar).catch(() => {});
+});

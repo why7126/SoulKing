@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css?v=44" />
-    <link rel="stylesheet" href="/static/admin-studio.css?v=19" />
+    <link rel="stylesheet" href="/static/admin-studio.css?v=20" />
   </head>
   <body class="admin-app admin-table-body">
     <div class="bg-orb orb-1"></div>
@@ -47,18 +47,19 @@
           <a href="#" id="adminNavPeople" class="adm-nav-item admin-nav-item" data-page="people"><svg class="adm-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>艺人管理</a>
           <a href="#" id="adminNavTags" class="adm-nav-item admin-nav-item" data-page="tags"><svg class="adm-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 7h16M4 12h10M4 17h6"/></svg>标签管理</a>
           <a href="#" id="adminNavLanguage" class="adm-nav-item admin-nav-item" data-page="language"><svg class="adm-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 3a9 9 0 1 0 0 18"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg>语言管理</a>
+          <a href="#" id="adminNavUsers" class="adm-nav-item admin-nav-item" data-page="users"><svg class="adm-nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>用户管理</a>
         </nav>
         <div class="adm-sidebar-bottom">
           <div class="adm-user-row">
             <button type="button" id="adminUserAvatarBtn" class="adm-user-avatar" aria-label="打开用户菜单" aria-expanded="false" aria-haspopup="menu" aria-controls="adminUserMenu"></button>
             <div class="adm-user-meta">
-              <strong>Admin</strong>
-              <span>超级管理员</span>
+              <strong id="adminUserDisplayName">—</strong>
+              <span id="adminUserRoleLabel">—</span>
             </div>
           </div>
           <div id="adminUserMenu" class="adm-user-menu hidden" role="menu" aria-label="用户菜单">
             <button type="button" id="goFrontendBtn" class="adm-user-menu-item" role="menuitem">返回前台</button>
-            <button type="button" id="logoutBtn" class="adm-user-menu-item" role="menuitem">退出登录</button>
+            <button type="button" id="logoutBtn" class="adm-user-menu-item user-menu-item--destructive" role="menuitem">退出登录</button>
           </div>
         </div>
       </aside>
@@ -316,121 +317,219 @@
 
           <!-- 艺人管理 -->
           <section id="admin-page-people" class="admin-page hidden">
-            <div class="admin-subpage-wrap">
-              <header class="adm-page-header" style="border:0;padding-top:0">
+            <div class="admin-studio-root">
+              <header class="adm-page-header">
                 <div class="adm-page-head-text"><h1>艺人管理</h1><p>维护歌手、作词、作曲等艺人资料。</p></div>
               </header>
-              <div class="admin-table-layout">
-                <section class="panel admin-toolbar-panel">
-                  <div class="admin-search-row">
-                    <div class="search-field-wrap">
-                      <input id="peopleSearchInput" type="text" placeholder="搜索艺人" autocomplete="off" />
-                      <button type="button" id="peopleSearchClearBtn" class="search-clear-btn hidden" aria-label="清空">✕</button>
-                    </div>
-                    <div class="manager-toolbar-buttons">
-                      <button id="peopleNewBtn" class="btn-adm-primary" type="button">新建艺人</button>
-                      <button id="peopleBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
-                    </div>
+              <div class="adm-controls admin-toolbar-panel">
+                <div class="adm-toolbar">
+                  <div class="adm-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="peopleSearchInput" type="search" placeholder="搜索艺人…" autocomplete="off" />
+                    <button type="button" id="peopleSearchClearBtn" class="search-clear-btn hidden" aria-label="清空">✕</button>
                   </div>
-                </section>
-                <section class="panel admin-table-panel">
-                  <div class="admin-table-wrap">
-                    <table class="admin-table">
+                  <div class="adm-toolbar-actions">
+                    <button id="peopleNewBtn" class="btn-adm-primary" type="button">新建艺人</button>
+                    <button id="peopleBatchDeleteBtn" class="btn-adm-ghost btn-adm-danger hidden" type="button">批量删除</button>
+                  </div>
+                </div>
+              </div>
+              <div class="adm-workspace adm-ref-workspace">
+                <div class="adm-main-column">
+                  <div class="adm-table-scroll admin-table-panel">
+                    <table class="adm-data-table admin-table">
                       <thead>
                         <tr>
-                          <th><input type="checkbox" id="selectAllPeople" title="全选" /></th>
+                          <th><input type="checkbox" id="selectAllPeople" title="全选当前页" /></th>
                           <th>#</th>
                           <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="name" data-label="艺人">艺人</button></th>
                           <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="types" data-label="类型">类型</button></th>
                           <th><button class="manager-sort-btn" type="button" data-manager="people" data-sort="created_at" data-label="创建时间">创建时间</button></th>
-                          <th>操作</th>
+                          <th class="col-actions">操作</th>
                         </tr>
                       </thead>
                       <tbody id="peopleTableBody"></tbody>
                     </table>
                   </div>
-                </section>
+                  <footer class="adm-table-footer">
+                    <span id="peopleListTotalLabel" class="adm-list-total">共 0 位艺人</span>
+                    <div class="adm-pagination">
+                      <button type="button" class="adm-page-btn" id="peoplePagePrevBtn" aria-label="上一页">‹</button>
+                      <span id="peoplePageNumbers"></span>
+                      <button type="button" class="adm-page-btn" id="peoplePageNextBtn" aria-label="下一页">›</button>
+                      <select id="peoplePageSizeSelect" class="adm-page-size" aria-label="每页条数">
+                        <option value="20" selected>20 条/页</option>
+                        <option value="50">50 条/页</option>
+                        <option value="100">100 条/页</option>
+                      </select>
+                    </div>
+                  </footer>
+                </div>
               </div>
             </div>
           </section>
 
           <!-- 标签管理 -->
           <section id="admin-page-tags" class="admin-page hidden">
-            <div class="admin-subpage-wrap">
-              <header class="adm-page-header" style="border:0;padding-top:0">
-                <div class="adm-page-head-text"><h1>标签管理</h1></div>
+            <div class="admin-studio-root">
+              <header class="adm-page-header">
+                <div class="adm-page-head-text"><h1>标签管理</h1><p>维护曲库标签分类。</p></div>
               </header>
-              <div class="admin-table-layout">
-                <section class="panel admin-toolbar-panel">
-                  <div class="admin-search-row">
-                    <div class="search-field-wrap">
-                      <input id="tagSearchInput" type="text" placeholder="搜索标签" autocomplete="off" />
-                      <button type="button" id="tagSearchClearBtn" class="search-clear-btn hidden">✕</button>
-                    </div>
-                    <div class="manager-toolbar-buttons">
-                      <button id="tagNewBtn" class="btn-adm-primary" type="button">新建标签</button>
-                      <button id="tagBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
-                    </div>
+              <div class="adm-controls admin-toolbar-panel">
+                <div class="adm-toolbar">
+                  <div class="adm-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="tagSearchInput" type="search" placeholder="搜索标签…" autocomplete="off" />
+                    <button type="button" id="tagSearchClearBtn" class="search-clear-btn hidden" aria-label="清空">✕</button>
                   </div>
-                </section>
-                <section class="panel admin-table-panel">
-                  <div class="admin-table-wrap">
-                    <table class="admin-table">
+                  <div class="adm-toolbar-actions">
+                    <button id="tagNewBtn" class="btn-adm-primary" type="button">新建标签</button>
+                    <button id="tagBatchDeleteBtn" class="btn-adm-ghost btn-adm-danger hidden" type="button">批量删除</button>
+                  </div>
+                </div>
+              </div>
+              <div class="adm-workspace adm-ref-workspace">
+                <div class="adm-main-column">
+                  <div class="adm-table-scroll admin-table-panel">
+                    <table class="adm-data-table admin-table">
                       <thead>
                         <tr>
-                          <th><input type="checkbox" id="selectAllTags" title="全选" /></th>
+                          <th><input type="checkbox" id="selectAllTags" title="全选当前页" /></th>
                           <th>#</th>
                           <th><button class="manager-sort-btn" type="button" data-manager="tag" data-sort="name" data-label="标签名称">标签名称</button></th>
                           <th><button class="manager-sort-btn" type="button" data-manager="tag" data-sort="created_at" data-label="创建时间">创建时间</button></th>
-                          <th>操作</th>
+                          <th class="col-actions">操作</th>
                         </tr>
                       </thead>
                       <tbody id="tagTableBody"></tbody>
                     </table>
                   </div>
-                </section>
+                  <footer class="adm-table-footer">
+                    <span id="tagListTotalLabel" class="adm-list-total">共 0 个标签</span>
+                    <div class="adm-pagination">
+                      <button type="button" class="adm-page-btn" id="tagPagePrevBtn" aria-label="上一页">‹</button>
+                      <span id="tagPageNumbers"></span>
+                      <button type="button" class="adm-page-btn" id="tagPageNextBtn" aria-label="下一页">›</button>
+                      <select id="tagPageSizeSelect" class="adm-page-size" aria-label="每页条数">
+                        <option value="20" selected>20 条/页</option>
+                        <option value="50">50 条/页</option>
+                        <option value="100">100 条/页</option>
+                      </select>
+                    </div>
+                  </footer>
+                </div>
               </div>
             </div>
           </section>
 
-          <!-- 语言 / 风格 -->
+          <!-- 用户管理 -->
+          <section id="admin-page-users" class="admin-page hidden">
+            <div class="admin-studio-root">
+              <header class="adm-page-header">
+                <div class="adm-page-head-text">
+                  <h1>用户管理</h1>
+                  <p>创建账号、分配角色、启用或禁用用户（不开放自助注册）。</p>
+                </div>
+              </header>
+              <div class="adm-controls admin-toolbar-panel">
+                <div class="adm-toolbar">
+                  <div class="adm-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="userSearchInput" type="search" placeholder="搜索用户名 / 昵称…" autocomplete="off" />
+                    <button type="button" id="userSearchClearBtn" class="search-clear-btn hidden" aria-label="清空">✕</button>
+                  </div>
+                  <div class="adm-toolbar-actions">
+                    <button id="userNewBtn" class="btn-adm-primary" type="button">新建用户</button>
+                  </div>
+                </div>
+              </div>
+              <div class="adm-workspace adm-ref-workspace">
+                <div class="adm-main-column">
+                  <div class="adm-table-scroll admin-table-panel">
+                    <table class="adm-data-table admin-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>用户名</th>
+                          <th>昵称</th>
+                          <th>角色</th>
+                          <th>状态</th>
+                          <th>创建时间</th>
+                          <th class="col-actions">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody id="userTableBody"></tbody>
+                    </table>
+                  </div>
+                  <footer class="adm-table-footer">
+                    <span id="userListTotalLabel" class="adm-list-total">共 0 位用户</span>
+                    <div class="adm-pagination">
+                      <button type="button" class="adm-page-btn" id="userPagePrevBtn" aria-label="上一页">‹</button>
+                      <span id="userPageNumbers"></span>
+                      <button type="button" class="adm-page-btn" id="userPageNextBtn" aria-label="下一页">›</button>
+                      <select id="userPageSizeSelect" class="adm-page-size" aria-label="每页条数">
+                        <option value="20" selected>20 条/页</option>
+                        <option value="50">50 条/页</option>
+                        <option value="100">100 条/页</option>
+                      </select>
+                    </div>
+                  </footer>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section id="admin-page-language" class="admin-page hidden">
-            <div class="admin-subpage-wrap">
-              <header class="adm-page-header" style="border:0;padding-top:0">
+            <div class="admin-studio-root">
+              <header class="adm-page-header">
                 <div class="adm-page-head-text">
                   <h1>语言管理</h1>
                   <p>维护曲库使用的语言分类。</p>
                 </div>
               </header>
-              <div class="admin-table-layout">
-                <section class="panel admin-toolbar-panel">
-                  <div class="admin-search-row">
-                    <div class="search-field-wrap">
-                      <input id="languageSearchInput" type="text" placeholder="搜索语言" autocomplete="off" />
-                      <button type="button" id="languageSearchClearBtn" class="search-clear-btn hidden">✕</button>
-                    </div>
-                    <div class="manager-toolbar-buttons">
-                      <button id="languageNewBtn" class="btn-adm-primary" type="button">新建语言</button>
-                      <button id="languageBatchDeleteBtn" class="btn danger hidden" type="button">批量删除</button>
-                    </div>
+              <div class="adm-controls admin-toolbar-panel">
+                <div class="adm-toolbar">
+                  <div class="adm-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="languageSearchInput" type="search" placeholder="搜索语言…" autocomplete="off" />
+                    <button type="button" id="languageSearchClearBtn" class="search-clear-btn hidden" aria-label="清空">✕</button>
                   </div>
-                </section>
-                <section class="panel admin-table-panel">
-                  <div class="admin-table-wrap">
-                    <table class="admin-table">
+                  <div class="adm-toolbar-actions">
+                    <button id="languageNewBtn" class="btn-adm-primary" type="button">新建语言</button>
+                    <button id="languageBatchDeleteBtn" class="btn-adm-ghost btn-adm-danger hidden" type="button">批量删除</button>
+                  </div>
+                </div>
+              </div>
+              <div class="adm-workspace adm-ref-workspace">
+                <div class="adm-main-column">
+                  <div class="adm-table-scroll admin-table-panel">
+                    <table class="adm-data-table admin-table">
                       <thead>
                         <tr>
-                          <th><input type="checkbox" id="selectAllLanguages" title="全选" /></th>
+                          <th><input type="checkbox" id="selectAllLanguages" title="全选当前页" /></th>
                           <th>#</th>
                           <th><button class="manager-sort-btn" type="button" data-manager="language" data-sort="name" data-label="语言名称">语言名称</button></th>
                           <th><button class="manager-sort-btn" type="button" data-manager="language" data-sort="created_at" data-label="创建时间">创建时间</button></th>
-                          <th>操作</th>
+                          <th class="col-actions">操作</th>
                         </tr>
                       </thead>
                       <tbody id="languageTableBody"></tbody>
                     </table>
                   </div>
-                </section>
+                  <footer class="adm-table-footer">
+                    <span id="languageListTotalLabel" class="adm-list-total">共 0 种语言</span>
+                    <div class="adm-pagination">
+                      <button type="button" class="adm-page-btn" id="languagePagePrevBtn" aria-label="上一页">‹</button>
+                      <span id="languagePageNumbers"></span>
+                      <button type="button" class="adm-page-btn" id="languagePageNextBtn" aria-label="下一页">›</button>
+                      <select id="languagePageSizeSelect" class="adm-page-size" aria-label="每页条数">
+                        <option value="20" selected>20 条/页</option>
+                        <option value="50">50 条/页</option>
+                        <option value="100">100 条/页</option>
+                      </select>
+                    </div>
+                  </footer>
+                </div>
               </div>
             </div>
           </section>
@@ -475,6 +574,22 @@
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+
+    <div id="logoutConfirmOverlay" class="adm-self-service-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle">
+      <div class="adm-modal-card">
+        <div class="adm-modal-head">
+          <h3 id="logoutConfirmTitle" class="adm-modal-title">退出登录</h3>
+          <button type="button" id="logoutConfirmCloseBtn" class="btn-adm-ghost adm-modal-close-btn" aria-label="关闭">×</button>
+        </div>
+        <div class="adm-modal-body">
+          <p class="adm-form-hint">确定要退出当前账号吗？</p>
+        </div>
+        <div class="adm-modal-actions">
+          <button type="button" id="logoutConfirmCancelBtn" class="btn-adm-secondary">取消</button>
+          <button type="button" id="logoutConfirmBtn" class="btn-adm-danger">退出</button>
+        </div>
+      </div>
+    </div>
 
     <div id="modalOverlay" class="modal-overlay hidden">
       <div class="modal-card">
@@ -589,6 +704,6 @@
       </div>
     </div>
 
-    <script type="module" src="/static/admin.js?v=59"></script>
+    <script type="module" src="/static/admin.js?v=60"></script>
   </body>
 </html>

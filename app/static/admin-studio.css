@@ -328,11 +328,14 @@ body.admin-app.admin-table-body {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.admin-app .adm-user-menu-item:last-child {
+.admin-app .adm-user-menu-item.user-menu-item--destructive {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--adm-border);
   color: var(--adm-danger);
 }
 
-.admin-app .adm-user-menu-item:last-child:hover {
+.admin-app .adm-user-menu-item.user-menu-item--destructive:hover {
   background: rgba(248, 113, 113, 0.1);
 }
 
@@ -683,6 +686,29 @@ body.admin-app.admin-table-body {
   border-color: rgba(124, 77, 255, 0.35);
 }
 
+.admin-app .btn-adm-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 34px;
+  box-sizing: border-box;
+  border-radius: var(--adm-radius-sm);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--adm-danger);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.admin-app .btn-adm-danger:hover {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: var(--adm-danger);
+}
+
 .admin-app .btn-adm-ghost {
   padding: 6px 10px;
   height: 34px;
@@ -793,7 +819,8 @@ body.admin-app.admin-table-body {
   background: transparent;
 }
 
-.admin-app .adm-songs-table {
+.admin-app .adm-songs-table,
+.admin-app .adm-data-table {
   width: max-content;
   min-width: 100%;
   border-collapse: separate;
@@ -921,7 +948,8 @@ body.admin-app #admin-page-music .adm-songs-table.admin-table tbody td.col-actio
   background-color: var(--adm-sticky-bg-selected);
 }
 
-.admin-app .adm-songs-table thead th {
+.admin-app .adm-songs-table thead th,
+.admin-app .adm-data-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -936,7 +964,8 @@ body.admin-app #admin-page-music .adm-songs-table.admin-table tbody td.col-actio
   white-space: nowrap;
 }
 
-.admin-app .adm-songs-table tbody td {
+.admin-app .adm-songs-table tbody td,
+.admin-app .adm-data-table tbody td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--adm-border);
   vertical-align: middle;
@@ -947,8 +976,120 @@ body.admin-app #admin-page-music .adm-songs-table.admin-table tbody td.col-actio
   transition: background 0.12s;
 }
 
-.admin-app .adm-songs-table tbody tr:hover {
+.admin-app .adm-data-table tbody tr {
+  transition: background 0.12s;
+}
+
+.admin-app .adm-songs-table tbody tr:hover,
+.admin-app .adm-data-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.admin-app .adm-data-table .empty-cell {
+  text-align: center;
+  color: var(--adm-muted);
+  padding: 32px 12px;
+}
+
+.admin-app .adm-data-table {
+  --adm-sticky-bg: var(--adm-bg);
+  --adm-sticky-bg-hover: #12121c;
+}
+
+.admin-app .adm-data-table tbody td {
+  background-color: var(--adm-sticky-bg);
+}
+
+.admin-app .adm-data-table tbody tr:hover td {
+  background-color: var(--adm-sticky-bg-hover);
+}
+
+body.admin-app .adm-data-table.admin-table thead th.col-actions,
+body.admin-app .adm-data-table.admin-table tbody td.col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 13;
+  min-width: 52px;
+  width: 52px;
+  box-sizing: border-box;
+  background-color: var(--adm-sticky-bg);
+  background-clip: padding-box;
+  box-shadow: -6px 0 14px -4px rgba(0, 0, 0, 0.45);
+}
+
+.admin-app .adm-data-table thead th.col-actions {
+  z-index: 25;
+  background-color: var(--adm-bg);
+}
+
+.admin-app .adm-data-table tbody tr:hover td.col-actions {
+  background-color: var(--adm-sticky-bg-hover);
+}
+
+.admin-app .table-more-menu {
+  min-width: 120px;
+  background: var(--adm-panel-2);
+  border: 1px solid var(--adm-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.admin-app .table-more-menu .menu-btn {
+  width: 100%;
+  color: var(--adm-text);
+  background: transparent;
+  border: none;
+  border-radius: var(--adm-radius-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.admin-app .table-more-menu .menu-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-app .table-more-menu .menu-btn.danger-text {
+  color: var(--adm-danger);
+}
+
+.admin-app .table-more-menu .menu-btn.danger-text:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.admin-app .sort-btn,
+.admin-app .manager-sort-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--adm-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.admin-app .sort-btn:hover,
+.admin-app .manager-sort-btn:hover {
+  color: var(--adm-accent-hover);
+}
+
+.admin-app .btn-adm-ghost.btn-adm-danger {
+  border-color: rgba(248, 113, 113, 0.35);
+  color: var(--adm-danger);
+}
+
+.admin-app .btn-adm-ghost.btn-adm-danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--adm-danger);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.admin-app .adm-ref-workspace {
+  flex: 1;
+  min-height: 0;
 }
 
 .admin-app .adm-actions-inner {
@@ -1786,4 +1927,94 @@ body.admin-app #admin-page-music .adm-songs-table.admin-table {
   .admin-app #admin-page-music.is-edit-drawer-open .admin-studio-root {
     margin-right: min(100vw, var(--adm-edit-w));
   }
+}
+
+/* 退出登录确认 — Admin 自助模态 */
+.admin-app .adm-self-service-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.admin-app .adm-self-service-overlay.hidden {
+  display: none;
+}
+
+.admin-app .adm-modal-card {
+  width: min(420px, 92vw);
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  padding: 18px 20px 20px;
+  border-radius: var(--adm-radius);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-panel);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+}
+
+.admin-app .adm-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.admin-app .adm-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--adm-text);
+  line-height: 1.3;
+}
+
+.admin-app .adm-modal-close-btn {
+  min-width: 32px;
+  padding: 6px 8px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-app .adm-modal-body .adm-form-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--adm-muted);
+}
+
+.admin-app .adm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--adm-border);
+}
+
+/* 退出确认弹层按钮尺寸对齐前台 Studio 模态 */
+.admin-app .adm-modal-actions .btn-adm-secondary {
+  height: auto;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-app .adm-modal-actions .btn-adm-danger {
+  height: auto;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
 }

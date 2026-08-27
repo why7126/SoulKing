@@ -12,21 +12,29 @@ class S3Storage:
     def __init__(self):
         settings = get_settings()
         self.settings = settings
-        self.client = boto3.client(
+        self.client = self._make_client(settings.s3_endpoint_url)
+        public = (settings.s3_public_endpoint_url or "").strip() or settings.s3_endpoint_url
+        self._presign_client = (
+            self.client if public.rstrip("/") == settings.s3_endpoint_url.rstrip("/") else self._make_client(public)
+        )
+
+    def _make_client(self, endpoint_url: str):
+        s = self.settings
+        return boto3.client(
             "s3",
-            endpoint_url=settings.s3_endpoint_url,
-            aws_access_key_id=settings.s3_access_key_id,
-            aws_secret_access_key=settings.s3_secret_access_key,
-            region_name=settings.s3_region_name,
-            use_ssl=settings.s3_secure,
+            endpoint_url=endpoint_url,
+            aws_access_key_id=s.s3_access_key_id,
+            aws_secret_access_key=s.s3_secret_access_key,
+            region_name=s.s3_region_name,
+            use_ssl=s.s3_secure,
             config=Config(signature_version="s3v4"),
         )
 
     def ensure_buckets(self) -> None:
         existing = {b["Name"] for b in self.client.list_buckets().get("Buckets", [])}
-        for name in (self.settings.s3_bucket_music, self.settings.s3_bucket_covers):
-            if name not in existing:
-                self.client.create_bucket(Bucket=name)
+        name = self.settings.s3_bucket_music
+        if name not in existing:
+            self.client.create_bucket(Bucket=name)
 
     def ensure_buckets_retry(self, max_wait_seconds: float = 90.0, interval: float = 1.5) -> None:
         """MinIO 可能比应用晚就绪（或未启动）；连接失败时重试，避免 Docker 一启动就退出。"""
@@ -45,13 +53,24 @@ class S3Storage:
             "docker compose -f docker-compose.yaml -p minio up -d"
         ) from last
 
-    def upload_file(self, local_path: str, object_key: str, content_type: Optional[str] = None) -> None:
+    def upload_file(
+        self,
+        local_path: str,
+        object_key: str,
+        content_type: Optional[str] = None,
+        cache_control: Optional[str] = None,
+    ) -> None:
+        extra: dict[str, str] = {}
         if content_type:
+            extra["ContentType"] = content_type
+        if cache_control:
+            extra["CacheControl"] = cache_control
+        if extra:
             self.client.upload_file(
                 Filename=local_path,
                 Bucket=self.settings.s3_bucket_music,
                 Key=object_key,
-                ExtraArgs={"ContentType": content_type},
+                ExtraArgs=extra,
             )
             return
 
@@ -63,7 +82,7 @@ class S3Storage:
 
     def create_presigned_get_url(self, object_key: str, expire_seconds: Optional[int] = None) -> str:
         expires_in = expire_seconds or self.settings.s3_presign_expire_seconds
-        return self.client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": self.settings.s3_bucket_music, "Key": object_key},
             ExpiresIn=expires_in,

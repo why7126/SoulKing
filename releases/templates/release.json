@@ -1,0 +1,123 @@
+{
+  "version": "v0.0.1",
+  "release_time": "2026-07-02 14:56:58",
+  "owner": "product",
+  "summary": "产品版本发布摘要",
+  "formal_scope_only": true,
+  "version_change_rationale": "",
+  "image_required": false,
+  "image_required_rationale": "模板文件，正式发布时按 backend / static Web shell / Dockerfile / Compose / 构建脚本 / env / DB / FastAPI OpenAPI / 离线镜像交付影响判断",
+  "image_tag": "v0.0.1",
+  "image_plan": "image-build-plan.json",
+  "image_manifest": "image-manifest.json",
+  "usage_docs": {
+    "status": "pending_confirmation",
+    "root": "usage-docs",
+    "manifest": "usage-docs/manifest.json",
+    "source_version": null,
+    "manual_overrides_allowed": true,
+    "overwrite_policy": "current-version-only-by-default",
+    "generation_decision": {
+      "required": null,
+      "confirmed_at": "",
+      "confirmed_by": "",
+      "rationale": ""
+    }
+  },
+  "external_image_build_evidence": {
+    "status": "na",
+    "rationale": "模板文件；仅 Docker 或外部构建系统场景使用，必须记录来源、校验方式、sha256、负责人确认和风险说明"
+  },
+  "sprints": [
+    "sprint-004"
+  ],
+  "requirements": [
+    {
+      "id": "REQ-0026-product-release-management",
+      "title": "产品版本发布与公告管理",
+      "status": "in_sprint",
+      "scope": "formal"
+    }
+  ],
+  "bugs": [],
+  "changes": [
+    {
+      "id": "add-product-release-management",
+      "status": "proposed",
+      "scope": "formal"
+    }
+  ],
+  "gates": {
+    "openspec_archive": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时必须填入 archive 校验证据"
+    },
+    "tests": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时必须填入测试结果"
+    },
+    "orval": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时按 API 影响判断"
+    },
+    "docker_compose": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时按部署影响判断"
+    },
+    "database_migration": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时按数据库影响判断；若 impact_scope.database 非 none/na，必须记录 SQLAlchemy 模型或启动兼容迁移、SQLite 备份或回滚证据"
+    },
+    "env_example": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时按环境变量影响判断"
+    },
+    "product_version": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时必须校验 PRODUCT_VERSION"
+    },
+    "mintlify_preview": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时必须填入 Mintlify build 或 preview 结果"
+    },
+    "usage_docs_preview": {
+      "status": "na",
+      "rationale": "模板文件，正式发布时必须确认是否生成公开产品手册；需要时运行 scripts/generate-usage-docs.py 和 scripts/validate-usage-docs.py"
+    },
+    "image_prepare": {
+      "status": "na",
+      "rationale": "模板文件，image_required=true 时必须引用 releases/<version>/image-build-plan.json 校验证据"
+    },
+    "image_build": {
+      "status": "na",
+      "rationale": "模板文件，image_required=true 或离线镜像交付时必须引用 releases/<version>/image-manifest.json 或受控外部构建证据"
+    }
+  },
+  "known_issues": [],
+  "upgrade_steps": [
+    "按发布说明执行升级前备份",
+    "执行部署或配置变更",
+    "完成 smoke 与回归验证"
+  ],
+  "rollback": {
+    "conditions": [
+      "核心路径 smoke 失败",
+      "发现阻断性数据或权限问题"
+    ],
+    "steps": [
+      "回退到上一 Git tag 或上一部署包",
+      "恢复上一版本环境变量和配置",
+      "按数据库回滚说明处理数据变更"
+    ]
+  },
+  "impact_scope": {
+    "web_admin": "na",
+    "owner_web": "na",
+    "miniapp": "na",
+    "backend": "na",
+    "database": "na",
+    "object_storage": "na",
+    "docker": "na"
+  },
+  "announcement": "announcement.mdx"
+}

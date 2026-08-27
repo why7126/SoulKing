@@ -1,8 +1,14 @@
 .env
 .env.local
+.env.*
+!.env.example
+scripts/build-images.env
+deploy/local/*.env
+deploy/prod/*.env
 .DS_Store
 data/
 minio-data/
+tmp/
 loc_start.md
 __pycache__/
 *.pyc

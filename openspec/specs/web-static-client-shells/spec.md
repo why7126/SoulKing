@@ -517,42 +517,106 @@
 - **WHEN** 用户将指针悬停在暂未开发的侧栏菜单项上
 - **THEN** 控件提供「暂未开发」或等价提示（如 `title` 属性）
 
+### Requirement: 登录页
+
+系统 SHALL 提供独立登录页（`GET /login`），包含用户名、密码输入与提交控件；视觉风格与前台 SoulKing Studio 深色主题一致。不提供服务端自助注册入口。登录成功后 SHALL 跳转至 `next` 查询参数指定的路径（若合法且同源），否则跳转站点根路径 `/`。
+
+密码输入框 MUST 在字段右侧提供可聚焦的「显示/隐藏密码」切换按钮；默认掩码显示（`type="password"`）。用户激活切换按钮时，该字段 SHALL 在明文（`type="text"`）与掩码之间切换，并更新按钮的 `aria-label` 与 `aria-pressed` 以反映当前状态。
+
+#### Scenario: 未登录访问前台被引导登录
+
+- **GIVEN** 用户无有效会话并打开前台壳
+- **WHEN** 壳内初始化请求 `/auth/me` 返回 401
+- **THEN** 浏览器导航至 `/login`（可携带 `next` 回跳参数）
+
+#### Scenario: 登录成功进入前台
+
+- **GIVEN** 用户在登录页输入正确凭据
+- **WHEN** 提交登录表单且服务端返回成功
+- **THEN** 浏览器进入前台壳根路径或 `next` 目标
+
+#### Scenario: 登录页切换密码可见性
+
+- **GIVEN** 用户在登录页且密码字段已有输入
+- **WHEN** 用户激活密码字段旁的显示/隐藏切换按钮
+- **THEN** 密码字段在掩码与明文显示之间切换
+- **AND** 切换按钮的 `aria-pressed` 与当前可见状态一致
+
+### Requirement: API 请求携带会话与 401 处理
+
+前台与后台壳内 `request()`（或等价封装）SHALL 对 API 请求携带 Cookie（`credentials: 'include'`）。收到 401 时 SHALL 跳转至 `/login`，并附带当前路径为 `next`（若实现安全）。
+
+#### Scenario: 会话过期后操作跳转登录
+
+- **GIVEN** 用户曾登录但会话已失效
+- **WHEN** 壳内 API 返回 401
+- **THEN** 跳转登录页
+
+### Requirement: 侧栏展示真实用户
+
+前台与后台壳侧栏用户区 SHALL 在加载后请求 `/auth/me` 并展示当前用户昵称（无昵称时用用户名）及头像（使用响应中的 `avatar_url`；无头像时显示用户名首字母等占位）。不得长期硬编码固定展示名（如 SoulKing/Admin）。
+
+#### Scenario: 前台展示昵称与头像
+
+- **GIVEN** 用户已登录且 `/auth/me` 返回昵称与 `avatar_url`
+- **WHEN** 前台壳完成初始化
+- **THEN** 侧栏用户元信息区显示该昵称
+- **AND** 头像按钮展示对应图片
+
+### Requirement: 后台用户管理导航
+
+后台壳侧栏导航 SHALL 包含「用户管理」入口；仅管理员可访问（与页面加载时 `/auth/me` 角色一致）。点击进入用户管理主内容区。
+
+#### Scenario: 用户管理导航可见
+
+- **GIVEN** 管理员已登录后台壳
+- **WHEN** 用户查看侧栏导航
+- **THEN** 存在「用户管理」项
+
 ### Requirement: 前台壳侧栏底部用户菜单
 
-前台壳侧栏底部 SHALL 展示曲库统计（如「X 首歌库」）与用户区。用户区 SHALL 包含用户头像按钮与用户名称展示，结构对齐后台壳侧栏底部用户行（头像按钮 + 元信息，非整行单一 button）。
+前台壳侧栏底部 SHALL 展示曲库统计（如「X 首歌库」）与用户区。用户区 SHALL 包含用户头像按钮与用户名称展示（数据来自 `/auth/me`），结构对齐后台壳侧栏底部用户行（头像按钮 + 元信息，非整行单一 button）。
 
-用户点击侧栏底部的 **头像按钮**（`#frontUserMenuBtn`）时 SHALL 展开向上弹出的菜单，包含至少四项：**个人资料**、**修改密码**、**进入后台**、**退出登录**。曲库统计行 MUST NOT 作为菜单触发器。
+用户点击侧栏底部的 **头像按钮**（`#frontUserMenuBtn`）时 SHALL 展开向上弹出的菜单，包含：**个人资料**、**修改密码**、**进入后台**（仅当前用户角色为 `admin` 时显示或可用）、**退出登录**。曲库统计行 MUST NOT 作为菜单触发器。
 
 菜单在展开后 MUST 保持可见，直至用户点击菜单与触发按钮之外、或选择某一菜单项后关闭；MUST NOT 因与打开菜单同一次用户激活相关联的 outside-click 或菜单项 handler 时序而立即关闭。
 
 顶栏 SHALL **不** 包含用户头像、用户名或用户菜单等重复入口。
 
-「进入后台」SHALL 触发整页导航至管理入口路径（与「壳内前后台跳转」一致）。尚未接入的功能项 MAY 以占位提示反馈，但菜单结构与入口 MUST 存在。
+「个人资料」「修改密码」SHALL 调用 `user-self-service` 所定义 API，不得以永久「即将接入」toast 代替。
+
+「进入后台」SHALL 触发整页导航至管理入口路径；仅 `admin` 角色可见或点击；`user` 角色不得看到该菜单项。
+
+「退出登录」菜单项 MUST 携带显式危险样式 class（`user-menu-item--destructive`），文字颜色与各壳 `--sk-danger` / `--adm-danger` 一致，hover 时呈现淡红背景，且 MUST NOT 仅依赖 `:last-child` 实现危险色。
+
+「退出登录」与其上一菜单项之间 MUST 呈现可见分隔。
+
+用户激活「退出登录」时，系统 MUST 先关闭用户菜单，再通过 **Studio 皮肤专用确认弹层**（`#logoutConfirmOverlay`，结构对齐 `sk-self-service-overlay` / `sk-modal-card`，MUST NOT 使用 Hermes 全局 `#modalOverlay` / `openModal`）询问是否退出；用户确认后 SHALL 调用 `POST /auth/logout` 并导航至 `/login`；取消时不执行登出。
 
 #### Scenario: 点击头像展开菜单
 
-- **GIVEN** 用户打开前台壳页面且用户菜单未展开
+- **GIVEN** 用户已登录并打开前台壳且用户菜单未展开
 - **WHEN** 用户点击侧栏底部用户区的头像按钮
-- **THEN** 在侧栏底部上方弹出包含个人资料、修改密码、进入后台、退出登录的菜单
+- **THEN** 在侧栏底部上方弹出菜单
+- **AND** 管理员可见「进入后台」，普通用户不可见该项
 
 #### Scenario: 菜单展开后保持可见
 
-- **GIVEN** 用户打开前台壳页面且用户菜单未展开
+- **GIVEN** 用户已登录并打开前台壳且用户菜单未展开
 - **WHEN** 用户点击侧栏底部的头像按钮一次
 - **THEN** 用户菜单保持展开状态
 - **AND** 用户可看到并点击菜单中的任一项
-- **AND** 菜单不会在无用户操作的情况下立即消失
 
 #### Scenario: 进入后台
 
-- **GIVEN** 用户已展开侧栏用户菜单
+- **GIVEN** 当前用户角色为 `admin` 且已展开侧栏用户菜单
 - **WHEN** 用户激活「进入后台」
 - **THEN** 浏览器导航至管理入口路径
 
 #### Scenario: 点击外部关闭菜单
 
 - **GIVEN** 用户已展开侧栏用户菜单
-- **WHEN** 用户在菜单与头像触发按钮外点击（如主内容区或侧栏导航项）
+- **WHEN** 用户在菜单与头像触发按钮外点击
 - **THEN** 用户菜单关闭
 
 #### Scenario: 顶栏不含用户菜单入口
@@ -560,6 +624,177 @@
 - **GIVEN** 用户打开前台壳页面
 - **WHEN** 用户查看顶栏右侧区域
 - **THEN** 不存在用户头像、用户名或用户下拉菜单控件
+
+#### Scenario: 退出登录呈现危险样式与分隔
+
+- **GIVEN** 用户已展开前台侧栏用户菜单
+- **WHEN** 用户查看「退出登录」菜单项
+- **THEN** 该项使用危险色强调且与上一菜单项之间存在可见分隔
+- **AND** 该项样式与后台壳用户菜单中的「退出登录」危险样式一致
+
+#### Scenario: 退出登录需 Studio 确认弹层
+
+- **GIVEN** 用户已展开前台侧栏用户菜单
+- **WHEN** 用户激活「退出登录」
+- **THEN** 用户菜单关闭
+- **AND** 出现 Studio 皮肤的退出确认弹层（非 Hermes `#modalOverlay`）
+- **AND** 弹层使用 `--sk-panel` / `--sk-border` 层级与 Studio 主/次按钮样式
+
+#### Scenario: 取消退出不执行登出
+
+- **GIVEN** 用户已通过「退出登录」打开 Studio 退出确认弹层
+- **WHEN** 用户选择取消、关闭按钮或点击遮罩关闭
+- **THEN** 不调用登出 API
+- **AND** 用户仍停留在当前前台页面
+
+#### Scenario: 确认退出跳转登录页
+
+- **GIVEN** 用户已通过「退出登录」打开 Studio 退出确认弹层
+- **WHEN** 用户在弹层中确认退出
+- **THEN** 调用 `POST /auth/logout`
+- **AND** 浏览器导航至 `/login`
+
+### Requirement: 前台壳个人资料与修改密码弹层 Studio 视觉
+
+前台壳内 `#profileOverlay` 与 `#passwordOverlay`（或等价自助表单模态）SHALL 使用 SoulKing Studio 设计令牌与组件样式，与 `ui-design.md` 及 `studio.css` 中 `--sk-*` 体系一致；MUST NOT 依赖未在前台页加载的 `login.css` 或 Hermes 灰阶 `--panel` / `--accent` 作为主视觉。
+
+弹层 SHALL 满足：
+
+- 遮罩与卡片背景使用 `--sk-bg` / `--sk-panel` 层级；
+- 主操作按钮使用 `btn-studio-primary`，次要操作使用 `btn-studio-secondary`（或等价 Studio 按钮 class）；
+- 文本输入框边框、背景与 focus 态与壳内 Studio 搜索框/input 模式一致（紫色 focus ring）；
+- 弹层 DOM 结构 MUST 使用 Studio 作用域 class（如 `sk-self-service-overlay`、`sk-modal-card`、`sk-form-field`），不得使用仅定义于 `login.css` 的 `login-field`。
+
+#### Scenario: 个人资料弹层使用 Studio 令牌
+
+- **GIVEN** 用户已登录并打开前台壳
+- **WHEN** 用户从侧栏用户菜单激活「个人资料」
+- **THEN** 弹层卡片背景与边框视觉与 Studio 面板（如曲库区域）一致
+- **AND** 「保存」按钮呈现 Studio 紫色主按钮样式
+- **AND** 输入框获得焦点时呈现紫色 focus ring
+
+#### Scenario: 修改密码弹层使用 Studio 令牌
+
+- **GIVEN** 用户已登录并打开前台壳
+- **WHEN** 用户从侧栏用户菜单激活「修改密码」
+- **THEN** 弹层视觉与个人资料弹层同属 Studio 皮肤
+- **AND** 复杂度提示文案使用 Studio 弱化文字色（`--sk-muted` 量级）
+
+#### Scenario: 不依赖 login.css
+
+- **GIVEN** 前台壳 HTML 未引用 `login.css`
+- **WHEN** 用户打开个人资料或修改密码弹层
+- **THEN** 表单字段与按钮仍具备完整 Studio 样式
+- **AND** 页面中不存在仅因缺少 `login.css` 导致的未样式化输入框
+
+### Requirement: 前台个人资料用户名只读展示
+
+前台壳 `#profileOverlay`（或等价个人资料模态）中的用户名 MUST 以只读文本或等效不可编辑控件展示；MUST NOT 使用可提交的文本输入框供用户修改登录名。保存资料时前台脚本 MUST 仅向 `PATCH /users/me` 发送 `nickname`（及通过独立接口上传头像），不发送 `username`。
+
+#### Scenario: 个人资料弹层用户名不可编辑
+
+- **GIVEN** 用户已登录并打开前台个人资料弹层
+- **WHEN** 用户尝试修改用户名字段
+- **THEN** 无法编辑用户名（只读或静态文本）
+- **AND** 保存请求不包含 `username`
+
+### Requirement: 前台修改密码二次确认与保存门禁
+
+前台壳 `#passwordOverlay`（或等价改密模态）MUST 包含字段：当前密码、新密码、确认新密码。`#passwordSaveBtn`（或等价主按钮）在页面打开时 MUST 为 `disabled`；仅当当前密码非空、新密码与确认新密码一致且新密码满足与 `application-auth` 一致的复杂度规则时，按钮才可启用。
+
+#### Scenario: 改密弹层含确认字段
+
+- **GIVEN** 用户打开前台修改密码弹层
+- **WHEN** 解析表单字段
+- **THEN** 存在「确认新密码」输入框
+
+#### Scenario: 保存按钮默认禁用
+
+- **GIVEN** 用户刚打开修改密码弹层
+- **WHEN** 尚未满足全部校验条件
+- **THEN** 「保存」按钮为 disabled 状态
+
+#### Scenario: 两次新密码一致后仍须满足复杂度
+
+- **GIVEN** 用户输入的当前密码非空
+- **WHEN** 新密码与确认新密码相同但不满足复杂度
+- **THEN** 「保存」按钮保持 disabled
+
+#### Scenario: 满足条件后启用保存
+
+- **GIVEN** 用户输入的当前密码非空
+- **WHEN** 新密码与确认新密码相同且满足复杂度
+- **THEN** 「保存」按钮变为可点击
+
+### Requirement: 前台头像展示刷新与 cache-bust
+
+前台脚本在渲染侧栏用户头像（`#frontUserMenuBtn`）与个人资料头像预览（`#profileAvatarPreview`）时，若使用 `/auth/me` 或头像上传响应中的 `avatar_url`，MUST **原样**使用该 URL（不得在客户端追加或修改查询参数，以免破坏 S3/MinIO presigned SigV4 签名）。头像上传成功或 `loadAuthMe()` 后 MUST 立即刷新上述两处展示。本地文件选择预览 MAY 使用 `blob:` 等临时 URL，且不得对 presigned URL 做未签名改写。
+
+#### Scenario: 上传头像后侧栏更新
+
+- **GIVEN** 用户在前台个人资料中上传并保存头像成功
+- **WHEN** 保存完成
+- **THEN** 侧栏 `#frontUserMenuBtn` 显示新头像图片
+- **AND** 浏览器对 `avatar_url` 的请求返回成功（如 200）
+
+#### Scenario: 上传头像后弹层预览更新
+
+- **GIVEN** 用户在前台个人资料中上传并保存头像成功
+- **WHEN** 保存完成且弹层仍打开或再次打开
+- **THEN** `#profileAvatarPreview` 显示新头像图片
+
+#### Scenario: presigned URL 不被客户端篡改
+
+- **GIVEN** `/auth/me` 返回的 `avatar_url` 为 presigned GET URL
+- **WHEN** 前台将其用于侧栏或资料预览
+- **THEN** 请求 URL 与 API 返回值一致（除浏览器自身行为外无额外 query 参数）
+- **AND** 不得因追加未签名参数导致对象存储返回 403
+
+### Requirement: 后台壳侧栏底部用户菜单
+
+后台壳侧栏底部 SHALL 提供用户头像按钮与用户元信息行（数据来自 `/auth/me`）；用户点击头像按钮时 SHALL 展开向上弹出的菜单，包含 **返回前台** 与 **退出登录** 两项。菜单打开/关闭语义 MUST 使用 `role="menu"` / `role="menuitem"` 与 `aria-expanded`。
+
+「返回前台」SHALL 触发整页导航至站点根路径。
+
+「退出登录」菜单项 MUST 携带显式危险样式 class（`user-menu-item--destructive`），视觉与前台一致（危险色 + 顶部分隔 + hover 淡红背景），且 MUST NOT 仅依赖 `:last-child` 等着色。
+
+「退出登录」与「返回前台」之间 MUST 呈现可见分隔。
+
+用户激活「退出登录」时，系统 MUST 先关闭用户菜单，再通过 **Admin 皮肤专用确认弹层**（`#logoutConfirmOverlay`，MUST NOT 使用 Hermes `#modalOverlay` / `openModal`）确认；确认后 SHALL 调用 `POST /auth/logout` 并导航至 `/login`；取消时不执行登出。后台壳 **不** 提供个人资料/改密码菜单项（管理员在前台用户菜单完成）。
+
+#### Scenario: 点击头像展开后台用户菜单
+
+- **GIVEN** 管理员已登录并打开后台壳
+- **WHEN** 用户点击侧栏底部用户头像按钮
+- **THEN** 弹出包含返回前台、退出登录的菜单
+
+#### Scenario: 后台退出登录危险样式与分隔
+
+- **GIVEN** 用户已展开后台侧栏用户菜单
+- **WHEN** 用户查看菜单项
+- **THEN** 「退出登录」为危险色强调
+- **AND** 「返回前台」与「退出登录」之间存在可见分隔
+
+#### Scenario: 后台退出登录需 Admin 确认弹层
+
+- **GIVEN** 用户已展开后台侧栏用户菜单
+- **WHEN** 用户激活「退出登录」
+- **THEN** 用户菜单关闭
+- **AND** 出现 Admin 皮肤的退出确认弹层（非 Hermes `#modalOverlay`）
+
+#### Scenario: 后台取消退出
+
+- **GIVEN** 用户已打开 Admin 退出确认弹层
+- **WHEN** 用户取消或关闭弹层
+- **THEN** 不调用登出 API
+- **AND** 用户仍停留在当前后台页面
+
+#### Scenario: 后台确认退出跳转登录页
+
+- **GIVEN** 用户已打开 Admin 退出确认弹层
+- **WHEN** 用户确认退出
+- **THEN** 调用 `POST /auth/logout`
+- **AND** 浏览器导航至 `/login`
 
 ### Requirement: 前台壳侧栏收起与展开
 
@@ -1435,6 +1670,138 @@ Tab 切换 MUST 更新 `inspectorTab` 状态并渲染对应面板内容，不得
 - **WHEN** 用户点击播放器下一首
 - **THEN** 列表跳转到该曲所在页并展示该行播放态
 - **AND** 该行在 `.adm-table-scroll` 内完整可见
+
+### Requirement: 壳层产品版本角标
+
+前台壳与后台壳侧栏品牌区 SHALL 在品牌标题「SoulKing」旁展示当前**产品版本**角标（方案 A：标题右侧小字 badge，使用 muted 次级色与等宽字体风格）。前台与后台 MUST 展示**相同**版本字符串，该值 MUST 自共享前端模块 `app/static/version.js` 的 `APP_VERSION` 常量读取并写入 DOM，不得在 HTML 中硬编码不同版本。
+
+后端配置 `app/config.py` 的 `Settings.app_version` SHALL 存储与前端语义对应的版本号（发版时与 `version.js` 由开发者手工同步更新）。样式表与脚本链接上的 `?v=` 查询参数 MUST NOT 作为产品版本展示来源。
+
+版本角标 MUST 提供可访问性文本（如 `aria-label="版本 v0.0.6"` 或对辅助技术可见的等价标记）。侧栏处于**收起**态时，版本角标 MUST 随品牌文案区一并隐藏（默认行为，不单独展示于 Logo 下）。
+
+#### Scenario: 前台展开态展示版本角标
+
+- **GIVEN** 用户已打开前台壳且侧栏处于展开态
+- **WHEN** 页面加载完成
+- **THEN** 侧栏品牌标题「SoulKing」旁可见与 `APP_VERSION` 一致的版本角标
+- **AND** 角标视觉为次级 muted 小字 badge，与后台一致
+
+#### Scenario: 后台展开态展示相同版本
+
+- **GIVEN** 用户已打开后台壳且侧栏处于展开态
+- **WHEN** 页面加载完成
+- **THEN** 侧栏品牌标题旁可见的版本角标与前台 `APP_VERSION` 相同
+
+#### Scenario: 收起侧栏时隐藏版本角标
+
+- **GIVEN** 用户已打开前台或后台壳且侧栏处于展开态并可见版本角标
+- **WHEN** 用户点击折叠切换控件收起侧栏
+- **THEN** 版本角标不可见
+- **AND** 品牌标题与副标题一并不可见
+
+#### Scenario: 版本与静态资源缓存参数区分
+
+- **GIVEN** 开发者将 `index.html` 中某样式表 `?v=` 参数改为新整数
+- **WHEN** 用户刷新页面
+- **THEN** 产品版本角标仍仅反映 `version.js` 中的 `APP_VERSION`
+- **AND** 不因 `?v=` 变更而自动改变角标文案
+
+### Requirement: 产品版本发版维护约定
+
+发版时开发者 MUST 手工同步更新以下位置的版本信息：`app/config.py` 的 `app_version`、`app/static/version.js` 的 `APP_VERSION`，以及迭代文档 `iterations/release_list.md` 中新版本段落（变更说明）。`config.py` 与 `version.js` 的版本语义 MUST 保持一致（允许 `config.py` 无 `v` 前缀而 UI 带 `v` 前缀的格式差异，但数字部分 MUST 相同）。
+
+#### Scenario: 发版后前后台版本一致
+
+- **GIVEN** 开发者将 `APP_VERSION` 更新为 `v0.0.7` 且 `app_version` 更新为 `0.0.7`
+- **WHEN** 用户分别打开前台壳与后台壳（侧栏展开）
+- **THEN** 两处角标均显示 `v0.0.7`
+
+### Requirement: 后台参考数据管理页 Admin 布局一致性
+
+后台壳内「艺人管理」「标签管理」「语言管理」三个主内容区（`#admin-page-people`、`#admin-page-tags`、`#admin-page-language`）SHALL 使用与「歌曲管理」相同的 SoulKing Admin 页面骨架：`admin-studio-root` 根容器、`adm-page-header` 页头（标题与可选描述，无内联 style 覆盖边框/内边距）、`adm-controls` 工具栏区（含 `adm-toolbar` 与 `adm-search-wrap`）、`adm-table-scroll` 表格外层滚动容器，以及 `adm-table-footer` 底栏展示总条数。
+
+各页工具栏 MUST 包含：带搜索图标的 `adm-search-wrap` 搜索输入（艺人/标签/语言分别对应现有搜索字段 id）、清空按钮（有输入时可见）、主操作 `btn-adm-primary`（新建）、以及在有行选中时显示的批量删除控件（使用 Admin 危险样式，不得使用 Hermes 全局 `btn danger` 作为唯一样式）。
+
+各页数据表格 MUST 使用 Admin 数据表样式（与歌曲表共享表头/行/空状态视觉，类名可为 `adm-data-table` 或与 `adm-songs-table` 并列的等价选择器），表头排序控件视觉 MUST 与歌曲列表 `sort-btn` 一致（允许保留 `manager-sort-btn` 类名与 `data-manager` / `data-sort` 属性供脚本使用）。
+
+艺人、标签、语言列表底栏 SHOULD 提供与歌曲管理一致的 `adm-pagination` 客户端分页（默认每页 20 条，可选 50/100），除非该页数据量固定极少且产品明确仅展示总数；至少 MUST 显示「共 N 条」类总数字样（`adm-list-total`）。
+
+#### Scenario: 艺人管理页呈现 Admin 工具栏与搜索框
+
+- **GIVEN** 管理员已登录并打开后台壳
+- **WHEN** 用户进入「艺人管理」主内容区
+- **THEN** 页面使用 `admin-studio-root` 布局
+- **AND** 工具栏包含 `adm-search-wrap` 结构的搜索框（非仅 `search-field-wrap` 平铺输入）
+- **AND** 存在 `btn-adm-primary` 的「新建艺人」按钮
+
+#### Scenario: 标签管理表头排序样式与歌曲表一致
+
+- **GIVEN** 用户位于「标签管理」页且表格已渲染
+- **WHEN** 用户查看表头「标签名称」排序按钮
+- **THEN** 该按钮呈现与歌曲管理列表表头排序控件相同的 Admin 样式（颜色、hover、排序指示）
+- **AND** 点击后仍按现有 `manager-sort-btn` 逻辑排序标签列表
+
+#### Scenario: 语言管理底栏展示总条数
+
+- **GIVEN** 语言管理列表已加载且共有 M 条语言
+- **WHEN** 用户查看表格下方底栏
+- **THEN** 底栏包含 `adm-table-footer` 结构
+- **AND** 可见文案表明列表总条数为 M（如「共 M 条」）
+
+#### Scenario: 批量删除按钮使用 Admin 危险样式
+
+- **GIVEN** 用户在艺人管理页勾选至少一行
+- **WHEN** 批量删除按钮变为可见
+- **THEN** 该按钮使用 `btn-adm-*` 体系下的危险/ghost 组合样式
+- **AND** 按钮不具有仅依赖 Hermes `btn danger` 的默认灰红主按钮外观
+
+### Requirement: 后台用户管理页 Admin 布局一致性
+
+后台壳内「用户管理」主内容区（`#admin-page-users`）SHALL 使用与「歌曲管理」及上述参考数据管理页相同的 SoulKing Admin 页面骨架（`admin-studio-root`、`adm-page-header`、`adm-controls`、`adm-search-wrap`、`adm-table-scroll`、`adm-table-footer`）。
+
+用户管理工具栏 MUST 包含 `adm-search-wrap` 搜索框，支持按用户名或昵称进行客户端过滤（大小写不敏感子串匹配）；MUST 包含 `btn-adm-primary` 的「新建用户」按钮。用户列表表格 MUST 使用与其它 Admin 数据表一致的样式。底栏 MUST 展示用户总条数，并 SHOULD 提供与其它管理页一致的客户端分页控件。
+
+#### Scenario: 用户管理页含搜索框
+
+- **GIVEN** 管理员位于「用户管理」页且列表中存在用户名为 `alice`、昵称为 `Alice` 的账号
+- **WHEN** 用户在 `adm-search-wrap` 搜索框输入 `ali`
+- **THEN** 列表仅展示用户名或昵称匹配该关键字的用户
+
+#### Scenario: 用户管理页布局与歌曲管理同属 Admin 体系
+
+- **GIVEN** 管理员依次打开「歌曲管理」与「用户管理」
+- **WHEN** 对比两页的工具栏与表格外层容器
+- **THEN** 两页均使用 `adm-toolbar` 与 `adm-table-scroll` 结构
+- **AND** 用户管理页不存在仅依赖 `admin-subpage-wrap` + Hermes `panel` 作为主布局的旧模式
+
+### Requirement: 后台参考数据管理页操作列仅更多下拉
+
+艺人、标签、语言、用户四个管理页的表格操作列（`.col-actions`）MUST 与歌曲管理页一致：默认仅展示一个「更多」（⋮）触发按钮（`adm-icon-btn table-more-btn`）；行内 MUST NOT 并列展示「修改」「删除」等独立按钮。各页原有行级操作 MUST 全部移入 `.table-more-menu` 下拉内，并使用与歌曲管理相同的 `menu-btn` 文案与危险项样式（删除为 `danger-text`）。操作列单元格背景与右侧 sticky 行为 MUST 与歌曲管理操作列一致（`--adm-sticky-bg`、hover 时 `--adm-sticky-bg-hover`、右侧阴影）。
+
+艺人/标签/语言菜单 MUST 至少包含「✎ 编辑」「🗑 删除」。用户管理菜单 MUST 包含切换角色、启用/禁用（超管账号无禁用项时省略）、重置密码、删除等现有能力，均通过菜单项触发。
+
+下拉展开逻辑 MUST 复用与歌曲列表相同的 fixed 定位菜单（`table-more-menu-fixed` 挂到 `document.body`），点击外部或其它行「更多」时关闭。
+
+#### Scenario: 参考数据页操作列仅显示更多按钮
+
+- **GIVEN** 管理员位于「标签管理」页且列表已加载
+- **WHEN** 用户查看任意数据行的操作列
+- **THEN** 可见控件仅为「更多」（⋮）按钮
+- **AND** 不存在行内并列的「修改」「删除」文字按钮
+
+#### Scenario: 从更多菜单编辑艺人
+
+- **GIVEN** 用户在「艺人管理」页展开某行更多菜单
+- **WHEN** 用户点击「✎ 编辑」
+- **THEN** 系统打开与该艺人等价的编辑/新建弹层（现有 `openCreateModal("person", …)` 流程）
+- **AND** 菜单关闭
+
+#### Scenario: 用户管理从更多菜单重置密码
+
+- **GIVEN** 用户在「用户管理」页展开某行更多菜单
+- **WHEN** 用户点击「重置密码」
+- **THEN** 系统触发与变更前相同的重置密码确认与 API 流程
+- **AND** 菜单在操作开始前关闭
 
 ## Notes
 

@@ -1,0 +1,151 @@
+body.login-page {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f0f14;
+  color: #e8e8ef;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.login-card {
+  width: min(100%, 380px);
+  padding: 32px 28px;
+  border-radius: 16px;
+  background: #18181f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.login-brand h1 {
+  margin: 12px 0 4px;
+  font-size: 1.35rem;
+}
+
+.login-brand .muted {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.login-field input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f0f14;
+  color: #e8e8ef;
+  font-size: 1rem;
+}
+
+.login-field input:focus {
+  outline: 2px solid rgba(139, 92, 246, 0.5);
+  border-color: #8b5cf6;
+}
+
+.login-field .password-input {
+  position: relative;
+  display: block;
+}
+
+.login-field .password-input input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 2.5rem;
+}
+
+.login-field .password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.login-field .password-toggle:hover {
+  color: #e8e8ef;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.login-field .password-toggle:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.5);
+  outline-offset: 1px;
+}
+
+.login-field .password-toggle-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.login-field .password-toggle-icon--hide {
+  display: none;
+}
+
+.login-field .password-toggle.password-toggle--visible .password-toggle-icon--show {
+  display: none;
+}
+
+.login-field .password-toggle.password-toggle--visible .password-toggle-icon--hide {
+  display: block;
+}
+
+.login-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #f87171;
+}
+
+.login-error.hidden {
+  display: none;
+}
+
+.login-submit {
+  margin-top: 4px;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-submit:hover {
+  filter: brightness(1.08);
+}
+
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

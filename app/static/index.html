@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css?v=42" />
-    <link rel="stylesheet" href="/static/studio.css?v=32" />
+    <link rel="stylesheet" href="/static/studio.css?v=33" />
   </head>
   <body class="front-app">
     <div class="bg-orb orb-1"></div>
@@ -77,14 +77,14 @@
           <div class="sk-user-row">
             <button type="button" id="frontUserMenuBtn" class="sk-user-avatar" aria-label="打开用户菜单" aria-expanded="false" aria-haspopup="menu" aria-controls="frontUserMenu"></button>
             <div class="sk-user-meta">
-              <strong>SoulKing</strong>
+              <strong id="frontUserDisplayName">—</strong>
             </div>
           </div>
           <div id="frontUserMenu" class="sk-user-menu hidden" role="menu" aria-label="用户菜单">
             <button type="button" id="frontUserProfileBtn" class="sk-user-menu-item" role="menuitem">个人资料</button>
             <button type="button" id="frontUserPasswordBtn" class="sk-user-menu-item" role="menuitem">修改密码</button>
             <button type="button" id="frontUserAdminBtn" class="sk-user-menu-item" role="menuitem">进入后台</button>
-            <button type="button" id="frontUserLogoutBtn" class="sk-user-menu-item" role="menuitem">退出登录</button>
+            <button type="button" id="frontUserLogoutBtn" class="sk-user-menu-item user-menu-item--destructive" role="menuitem">退出登录</button>
           </div>
         </div>
       </aside>
@@ -488,6 +488,99 @@
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+
+    <div id="profileOverlay" class="sk-self-service-overlay hidden">
+      <div class="sk-modal-card">
+        <div class="sk-modal-head">
+          <h3 class="sk-modal-title">个人资料</h3>
+          <button type="button" id="profileCloseBtn" class="btn-studio-ghost sk-modal-close-btn" aria-label="关闭">×</button>
+        </div>
+        <div class="sk-modal-body">
+          <div class="sk-profile-avatar-row">
+            <div id="profileAvatarPreview" class="sk-profile-avatar-preview" aria-hidden="true"></div>
+            <label class="sk-form-field">
+              <span class="sk-form-label">头像</span>
+              <input id="profileAvatarInput" type="file" accept="image/jpeg,image/png,image/webp" />
+            </label>
+          </div>
+          <label class="sk-form-field">
+            <span class="sk-form-label">昵称</span>
+            <input id="profileNicknameInput" type="text" autocomplete="nickname" />
+          </label>
+          <div class="sk-form-field sk-form-field--readonly">
+            <span class="sk-form-label">用户名</span>
+            <p id="profileUsernameDisplay" class="sk-readonly-value" aria-readonly="true"></p>
+            <span class="sk-form-hint">登录标识，如需修改请联系管理员</span>
+          </div>
+        </div>
+        <div class="sk-modal-actions">
+          <button type="button" id="profileCancelBtn" class="btn-studio-secondary">取消</button>
+          <button type="button" id="profileSaveBtn" class="btn-studio-primary">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="passwordOverlay" class="sk-self-service-overlay hidden">
+      <div class="sk-modal-card">
+        <div class="sk-modal-head">
+          <h3 class="sk-modal-title">修改密码</h3>
+          <button type="button" id="passwordCloseBtn" class="btn-studio-ghost sk-modal-close-btn" aria-label="关闭">×</button>
+        </div>
+        <div class="sk-modal-body">
+          <p class="sk-form-hint">至少 8 位，含大小写字母、数字与特殊字符</p>
+          <label class="sk-form-field">
+            <span class="sk-form-label">当前密码</span>
+            <div class="password-input">
+              <input id="passwordCurrentInput" type="password" autocomplete="current-password" />
+              <button type="button" class="password-toggle" aria-label="显示密码" aria-pressed="false">
+                <svg class="password-toggle-icon password-toggle-icon--show" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M1 1l22 22"/></svg>
+              </button>
+            </div>
+          </label>
+          <label class="sk-form-field">
+            <span class="sk-form-label">新密码</span>
+            <div class="password-input">
+              <input id="passwordNewInput" type="password" autocomplete="new-password" />
+              <button type="button" class="password-toggle" aria-label="显示密码" aria-pressed="false">
+                <svg class="password-toggle-icon password-toggle-icon--show" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M1 1l22 22"/></svg>
+              </button>
+            </div>
+          </label>
+          <label class="sk-form-field">
+            <span class="sk-form-label">确认新密码</span>
+            <div class="password-input">
+              <input id="passwordNewConfirmInput" type="password" autocomplete="new-password" />
+              <button type="button" class="password-toggle" aria-label="显示密码" aria-pressed="false">
+                <svg class="password-toggle-icon password-toggle-icon--show" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M1 1l22 22"/></svg>
+              </button>
+            </div>
+          </label>
+        </div>
+        <div class="sk-modal-actions">
+          <button type="button" id="passwordCancelBtn" class="btn-studio-secondary">取消</button>
+          <button type="button" id="passwordSaveBtn" class="btn-studio-primary" disabled>保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="logoutConfirmOverlay" class="sk-self-service-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle">
+      <div class="sk-modal-card">
+        <div class="sk-modal-head">
+          <h3 id="logoutConfirmTitle" class="sk-modal-title">退出登录</h3>
+          <button type="button" id="logoutConfirmCloseBtn" class="btn-studio-ghost sk-modal-close-btn" aria-label="关闭">×</button>
+        </div>
+        <div class="sk-modal-body">
+          <p class="sk-form-hint">确定要退出当前账号吗？</p>
+        </div>
+        <div class="sk-modal-actions">
+          <button type="button" id="logoutConfirmCancelBtn" class="btn-studio-secondary">取消</button>
+          <button type="button" id="logoutConfirmBtn" class="btn-studio-danger">退出</button>
+        </div>
+      </div>
+    </div>
 
     <div id="modalOverlay" class="modal-overlay hidden">
       <div class="modal-card">

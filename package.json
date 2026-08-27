@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "node scripts/debug-user-menu.mjs"
+    "test:e2e": "node scripts/debug-user-menu.mjs",
+    "docs:preview": "DOCS_SITE_ROOT=mintlify node deploy/scripts/docs-site-static-server.mjs",
+    "deploy:local": "bash deploy/scripts/up.sh local sqlite-minio-external",
+    "deploy:local:managed": "bash deploy/scripts/up.sh local sqlite-minio-managed",
+    "deploy:prod": "bash deploy/scripts/up.sh prod sqlite-minio-external"
   },
   "devDependencies": {
     "playwright": "^1.60.0"

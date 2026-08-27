@@ -1,0 +1,172 @@
+schema:
+  name: pm-harness-project
+  version: "1.0"
+  metadata_style: yaml
+
+project:
+  name: ProjectSoulKing
+  code: ProjectSoulKing
+  description: 私有化个人音乐管理系统，支持歌曲导入、元数据治理、播放下载、歌单、用户认证和后台管理。
+  domain: personal media management
+  lifecycle_stage: mvp
+  repository: local
+
+users:
+  target_users:
+    - name: 个人音乐库维护者
+      role: owner
+      primary_goal: 在本地或私有环境中统一管理音频、歌词、歌单和用户资料。
+  internal_roles:
+    - name: 管理员
+      responsibility: 维护歌曲元数据、参考数据、用户和存储对象。
+
+product_forms:
+  web_public:
+    enabled: true
+    description: 静态前台 Web 壳，提供曲库、播放、歌单和用户自助入口。
+  web_admin:
+    enabled: true
+    description: 静态后台 Web 壳，提供音乐、参考数据和用户管理。
+  api_service:
+    enabled: true
+    description: FastAPI REST 服务。
+  desktop:
+    enabled: true
+    platforms:
+      - macOS packaging helper
+  wechat_miniapp:
+    enabled: false
+  mobile:
+    enabled: false
+  sdk:
+    enabled: false
+  algorithm_service:
+    enabled: false
+
+technology:
+  backend:
+    enabled: true
+    language: Python
+    runtime_version: "3.12"
+    framework: FastAPI
+    validation: Pydantic
+    package_manager: pip
+    orm_or_repository: SQLAlchemy models and service functions
+    api_style: REST
+  frontend:
+    enabled: true
+    language: JavaScript
+    framework: static HTML/CSS/JS
+    css: layered CSS tokens in app/static
+    component_library: native DOM components
+    state_management: module-level browser state
+    http_client: fetch
+    api_client_generator: none
+    package_manager: npm
+  database:
+    enabled: true
+    primary: SQLite
+    migration: startup compatibility migrations
+    schema_source: app/models.py
+  object_storage:
+    enabled: true
+    provider: MinIO via ProjectMinio
+    mode: single_bucket_with_prefix
+  media:
+    enabled: true
+    types:
+      image: true
+      video: false
+      audio: true
+      document: false
+  ai_or_algorithm:
+    enabled: false
+
+deployment:
+  mode: docker-compose
+  environments:
+    - name: local
+      purpose: 本地开发
+      enabled: true
+    - name: production
+      purpose: 私有化部署
+      enabled: false
+  services:
+    - name: app
+      type: backend
+      enabled: true
+      source: app/
+      internal_port: 8000
+      healthcheck: GET /health
+    - name: minio
+      type: object_storage
+      enabled: true
+      source: ../ProjectMinio
+      internal_port: 9000
+      healthcheck: /minio/health/live
+  docker_compose:
+    enabled: true
+    file: docker-compose.yml
+
+ports:
+  strategy: container_fixed_host_configurable
+  services:
+    - name: app
+      container_port: 8000
+      host_default: 8000
+      env_var: APP_PORT
+    - name: minio
+      container_port: 9000
+      host_default: 9000
+      env_var: S3_ENDPOINT_URL
+
+object_storage:
+  enabled: true
+  strategy: single_bucket_with_prefix
+  default_bucket: soulking
+  key_patterns:
+    music: "music/{artists}/{song}/{filename}.{ext}"
+    covers: "covers/{user_or_resource}/{filename}.{ext}"
+  public_access_policy: private with presigned urls
+  signed_url_ttl: configured by application settings
+  cdn_enabled: false
+
+data_management:
+  local_data_dir: data/
+  runtime_data_committed: false
+  import_dir: import/
+  sensitive_data_policy: 不提交真实密钥、运行时数据库或个人媒体文件。
+
+ai:
+  coding_mode: OpenSpec + AI Agent
+  default_language: 中文
+  rules_required: true
+  document_governance_required: true
+  metadata_style: YAML Frontmatter
+  sprint_capacity:
+    developers: 2
+    testers: 1
+    capacity_person_days: 30
+    policy: default_baseline_for_new_sprints
+  agent_tools:
+    agents: true
+    cursor: false
+    claude: false
+    codex: false
+    kiro: false
+    opencode: false
+  default_commands:
+    explore: [/explore]
+    intake: [/capture]
+    requirements: [/req-capture, /req-explore, /req-generate, /req-complete, /req-review, /req-opsx]
+    bugs: [/bug-capture, /bug-explore, /bug-generate, /bug-complete, /bug-review, /bug-opsx]
+    sprint: [/sprint-propose, /sprint-explore, /sprint-apply, /sprint-exps, /sprint-archive]
+    openspec: [/opsx-explore, /opsx-propose, /opsx-apply, /opsx-modify, /opsx-archive]
+    governance: [/spec-opt, /spec-study]
+    git: [/git-check]
+    release: [/release-propose, /release-prepare, /release-publish]
+    image: [/image-prepare, /image-build]
+    upgrade: [/upgrade-plan, /upgrade-validate]
+    usage_docs: [/usage-docs-generate, /usage-docs-update, /usage-docs-validate]
+    miniapp: [/miniapp-env, /miniapp-check, /miniapp-prepare, /miniapp-confirm, /miniapp-restore]
+    bootstrap: [/initialize-project, /build-design-system, /build-api-standard, /build-test-framework]

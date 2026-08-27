@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SoulKing · 登录</title>
+    <link rel="stylesheet" href="/static/studio.css" />
+    <link rel="stylesheet" href="/static/login.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-card">
+      <div class="login-brand">
+        <img src="/static/logo.png" alt="SoulKing" width="48" height="48" decoding="async" />
+        <h1>SoulKing</h1>
+        <p class="muted">AI 音乐资源库</p>
+      </div>
+      <form id="loginForm" class="login-form">
+        <label class="login-field">
+          <span>用户名</span>
+          <input id="loginUsername" name="username" type="text" autocomplete="username" required />
+        </label>
+        <label class="login-field">
+          <span>密码</span>
+          <div class="password-input">
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" aria-label="显示密码" aria-pressed="false">
+              <svg class="password-toggle-icon password-toggle-icon--show" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="password-toggle-icon password-toggle-icon--hide" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M1 1l22 22"/></svg>
+            </button>
+          </div>
+        </label>
+        <p id="loginError" class="login-error hidden" role="alert"></p>
+        <button type="submit" class="login-submit">登录</button>
+      </form>
+    </main>
+    <script src="/static/login.js"></script>
+  </body>
+</html>
