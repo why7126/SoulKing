@@ -223,15 +223,18 @@ def collect_candidates(root: Path, args: argparse.Namespace) -> list[IssueCandid
 
 
 def find_archived_change(root: Path, change_id: str) -> Path | None:
-    archive_root = root / "openspec" / "changes" / "archive"
-    if not archive_root.exists():
-        return None
-    for path in archive_root.rglob("*"):
-        if not path.is_dir():
+    for archive_root in (
+        root / "openspec" / "archive",
+        root / "openspec" / "changes" / "archive",
+    ):
+        if not archive_root.exists():
             continue
-        if path.name == change_id or path.name.endswith(f"-{change_id}"):
-            if (path / "tasks.md").exists() or (path / "proposal.md").exists() or (path / "trace.md").exists():
-                return path
+        for path in archive_root.rglob("*"):
+            if not path.is_dir():
+                continue
+            if path.name == change_id or path.name.endswith(f"-{change_id}"):
+                if (path / "tasks.md").exists() or (path / "proposal.md").exists() or (path / "trace.md").exists():
+                    return path
     return None
 
 

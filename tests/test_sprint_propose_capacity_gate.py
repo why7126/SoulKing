@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SPRINT_PROPOSE_SKILL = ROOT / ".agents/skills/sprint-propose/SKILL.md"
 ITERATIONS_RULE = ROOT / "rules/iterations-lifecycle.md"
-CAPACITY_SPEC = ROOT / "openspec/changes/tighten-soulking-sprint-capacity-governance/specs/governance-workflow-tooling/spec.md"
+CAPACITY_SPEC = ROOT / "openspec/archive/2026-08-27-tighten-soulking-sprint-capacity-governance/specs/governance-workflow-tooling/spec.md"
 ADD_SCOPE_SCRIPT = ROOT / "scripts/add-sprint-scope-item.py"
 
 
@@ -74,3 +74,23 @@ def test_add_scope_item_refreshes_capacity_gate_result_and_note() -> None:
     assert "  result: blocked" in lines
     assert any("超过 120% 硬阻断阈值" in line for line in lines)
 
+
+def test_add_scope_item_merges_duplicate_inline_empty_list_sections() -> None:
+    module = load_add_scope_module()
+    lines = [
+        "capacity:",
+        "  developers: 2",
+        "requirements:",
+        "  - REQ-0001-first",
+        "capacity_person_days: 30",
+        "requirements: []",
+        "bugs: []",
+    ]
+
+    changed = module.ensure_list_item(lines, "requirements", "REQ-0002-second")
+
+    assert changed is True
+    assert lines.count("requirements:") == 1
+    assert "requirements: []" not in lines
+    assert "  - REQ-0001-first" in lines
+    assert "  - REQ-0002-second" in lines

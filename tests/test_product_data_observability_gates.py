@@ -92,6 +92,30 @@ product_data_collection_observability:
     assert code == 0
 
 
+def test_gate_accepts_archived_change_declaration(tmp_path: Path) -> None:
+    module = load_module(GATES_SCRIPT, "validate_product_data_observability_gates_archived")
+    write_entry_files(tmp_path)
+    change = tmp_path / "openspec/archive/2026-08-31-update-ai-usage"
+    change.mkdir(parents=True)
+    (change / "design.md").write_text(
+        """
+更新 AI Usage 治理统计。
+
+```yaml
+product_data_collection_observability:
+  status: not_applicable
+  affected_layers: []
+  reason: 仅影响治理脚本和 data/ai-usage 派生产物，不改变产品 API、数据库、请求日志、行为事件、Task Trace、请求封装、媒体链路或对象存储读写。
+  validation: 已复核归档 Change 声明。
+```
+""",
+        encoding="utf-8",
+    )
+
+    code = module.main(["--root", str(tmp_path), "--change", "update-ai-usage"])
+    assert code == 0
+
+
 def test_gate_blocks_empty_na_reason(tmp_path: Path) -> None:
     module = load_module(GATES_SCRIPT, "validate_product_data_observability_gates_na")
     write_entry_files(tmp_path)

@@ -1,7 +1,7 @@
 ---
-note: workflow-sync — 1/1 Change 已 archive；0 applied；待人工 sign-off
+note: workflow-sync — 2/2 Change 已 archive；0 applied；待人工 sign-off
 created_at: 2026-08-27 08:54:38
-updated_at: 2026-08-27 09:23:50
+updated_at: 2026-08-31 10:18:42
 ---
 
 # sprint-002 Acceptance Report

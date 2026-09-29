@@ -6,11 +6,13 @@ end_date: "2026-09-03 08:54:38"
 capacity:
   developers: 2
   testers: 1
+requirements:
+  - REQ-0018-ai-usage-manual-map-refresh
 capacity_person_days: 30
-requirements: []
 bugs: []
 changes:
   - tighten-soulking-sprint-capacity-governance
+  - update-ai-usage-manual-map-refresh
 scope_estimates:
   - id: tighten-soulking-sprint-capacity-governance
     change: tighten-soulking-sprint-capacity-governance
@@ -18,14 +20,21 @@ scope_estimates:
     story_points: 3
     estimated_person_days: 2
     rationale: 应用 ProjectTilesFST Sprint 容量配置和超出策略学习项 A1-A5，补齐 SoulKing 容量门禁规则、技能、OpenSpec 规格、脚本刷新和聚焦测试；不修改业务运行时代码。
-estimated_story_points: 3
-estimated_person_days: 2
-capacity_usage: 0.0667
-fix_buffer_person_days: 28
-fix_buffer_ratio: 0.9333
+  - id: REQ-0018-ai-usage-manual-map-refresh
+    change: update-ai-usage-manual-map-refresh
+    requirement: REQ-0018-ai-usage-manual-map-refresh
+    size: M
+    story_points: 3
+    estimated_person_days: 3
+    rationale: 固化 AI Usage manual map 与 snapshot 刷新流程，涉及脚本帮助、Sprint archive/exps 命令说明、Fact Sheet 复查路径和聚焦测试；不修改 SoulKing 产品运行时代码。
+estimated_story_points: 6
+estimated_person_days: 5
+capacity_usage: 0.1667
+fix_buffer_person_days: 25
+fix_buffer_ratio: 0.8333
 capacity_gate:
   capacity_person_days: 30
-  estimated_person_days: 2
-  capacity_usage: 0.0667
+  estimated_person_days: 5
+  capacity_usage: 0.1667
   result: pass
-  note: 当前 Sprint 仅承载 Sprint 容量治理学习应用，估算 2/30 人天，容量门禁通过，fix 缓冲 28 人天 / 93.33%。
+  note: 容量门禁通过：估算 5/30 人天，占用 16.67%，fix 缓冲 25 人天 / 83.33%。

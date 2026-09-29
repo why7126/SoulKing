@@ -102,12 +102,14 @@ python scripts/generate-sprint-fact-sheet.py --sprint <sprint-id> --json
 Inspect `ai_usage_snapshot.fresh_gate`、`snapshot_status`、`ai_usage_mode`、`generated_at`、`coverage`、`warnings` and `recommended_action`.
 
 - If `fresh_gate.status: pass`, `snapshot_status: present` and `ai_usage_mode: actual`, output only a compact summary: fresh gate status, snapshot status, mode, path, generated_at, coverage status, usage_matrices presence and warning_count.
-- If snapshot is `missing`、`stale` or `failed`, try to generate/refresh it only when the operator provides a local session input, using:
+- If snapshot is `missing`、`stale`、`failed`、`estimated_fallback` or has coverage/matrix blockers, try to generate/refresh it only when the operator provides a local session input. If automatic attribution cannot identify the target command turns, require a local manual map keyed by `turn_hash` or `source_session_hash`:
 
 ```bash
-python scripts/extract-ai-usage.py --session-jsonl <local-session.jsonl> --sprint <sprint-id> --json
+python scripts/extract-ai-usage.py --session-jsonl <local-session.jsonl> --manual-map <manual-map.json> --sprint <sprint-id> --json
+python scripts/generate-sprint-fact-sheet.py --sprint <sprint-id> --summary
 ```
 
+- The manual map may include `requirements`、`bugs`、`changes`、`sprint_id`、`workflow_event`、`release_sprints`、`release_version`、`post_command_target` and `attribution_confidence`. After refresh, MUST use the new Fact Sheet summary to re-check `fresh_gate`、`snapshot_status`、`ai_usage_mode`、coverage、totals and `usage_matrices_summary`; do not reuse pre-refresh conclusions.
 - If local session input is unavailable or generation fails, continue only with an explicit warning in the close report: `ai_usage_mode: estimated_fallback`, reason, impact, and recommended_action. Do not state that real token usage was used.
 - Do not print raw session JSONL, prompts, system/developer instructions, local absolute paths, tool output bodies, or full snapshot contents.
 

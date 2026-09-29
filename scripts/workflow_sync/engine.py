@@ -336,6 +336,7 @@ class SyncEngine:
                     change_status_map,
                     event=event,
                     focus_change=change_id,
+                    sprint_id=sprint.sprint_id if sprint else None,
                     write=write,
                 )
             )

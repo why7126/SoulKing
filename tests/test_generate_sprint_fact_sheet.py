@@ -68,3 +68,34 @@ def test_ai_usage_matrix_gate_requires_present_actual_fresh_matrix() -> None:
     )
     assert blocked["status"] == "blocker"
     assert "snapshot-stale" in blocked["blockers"]
+
+
+def test_ai_usage_markdown_blocks_fallback_matrix_and_keeps_recommended_action() -> None:
+    generate_sprint_fact_sheet = load_module()
+    section = generate_sprint_fact_sheet.render_ai_usage_retrospective_section(
+        {
+            "sprint": {"sprint_id": "sprint-002"},
+            "ai_usage_freshness_baseline": {"min_generated_at": "2026-08-31T01:00:00Z", "source": "sprint.md:updated_at"},
+            "ai_usage_snapshot": {
+                "path": "data/ai-usage/sprints/sprint-002.json",
+                "snapshot_status": "present",
+                "ai_usage_mode": "estimated_fallback",
+                "fresh_gate": {"status": "blocker", "blockers": ["usage-mode-estimated_fallback"]},
+                "generated_at": "2026-08-31T01:01:00Z",
+                "totals": {"command_run_count": 1, "total_tokens": 12, "input_tokens": 7, "output_tokens": 5},
+                "usage_matrices": {
+                    "columns": [{"label": "Opsx-Apply", "status": "observed"}],
+                    "rows": [{"object_id": "Total", "metrics": {"total_tokens": {"Opsx-Apply": 12}}}],
+                },
+                "recommended_action": (
+                    "Run `python scripts/extract-ai-usage.py --session-jsonl <local-session.jsonl> "
+                    "--manual-map <manual-map.json> --sprint <sprint-id> --json`, then rerun summary."
+                ),
+            },
+        }
+    )
+
+    assert "Matrix write gate | blocker" in section
+    assert "--manual-map <manual-map.json>" in section
+    assert "### total_tokens 矩阵" not in section
+    assert "刷新后重新运行 `--summary`" in section

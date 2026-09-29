@@ -46,13 +46,50 @@ def section_bounds(lines: list[str], key: str) -> tuple[int, int] | None:
     return start, end
 
 
+def all_section_bounds(lines: list[str], key: str) -> list[tuple[int, int]]:
+    bounds: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        if line == f"{key}: []":
+            bounds.append((index, index + 1))
+            continue
+        if line != f"{key}:":
+            continue
+        end = len(lines)
+        for next_index in range(index + 1, len(lines)):
+            next_line = lines[next_index]
+            if next_line and not next_line.startswith(" ") and re.match(r"^[A-Za-z0-9_]+:", next_line):
+                end = next_index
+                break
+        bounds.append((index, end))
+    return bounds
+
+
+def merge_duplicate_list_sections(lines: list[str], key: str) -> bool:
+    bounds = all_section_bounds(lines, key)
+    if len(bounds) <= 1:
+        return False
+
+    items: list[str] = []
+    for start, end in bounds:
+        for line in lines[start + 1 : end]:
+            if line.startswith("  - ") and line not in items:
+                items.append(line)
+
+    first_start, first_end = bounds[0]
+    for start, end in reversed(bounds[1:]):
+        del lines[start:end]
+    lines[first_start + 1 : first_end] = items
+    return True
+
+
 def ensure_list_item(lines: list[str], key: str, value: str, *, after_key: str | None = None) -> bool:
+    changed = merge_duplicate_list_sections(lines, key)
     bounds = section_bounds(lines, key)
     item = f"  - {value}"
     if bounds is not None:
         start, end = bounds
         if item in lines[start + 1 : end]:
-            return False
+            return changed
         lines.insert(end, item)
         return True
 

@@ -1,8 +1,8 @@
 ---
 req_id: REQ-0018-ai-usage-manual-map-refresh
-status: captured
+status: archived
 created_at: 2026-08-27 10:50:03
-updated_at: 2026-08-27 10:50:03
+updated_at: 2026-08-31 10:19:01
 recorded_at: 2026-08-27 10:50:03
 recorded_by: codex
 source: docs/knowledge-base/retrospectives/sprint-001-retrospective.md

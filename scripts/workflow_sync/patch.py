@@ -196,6 +196,19 @@ def ensure_marker_block(text: str, marker: str, new_body: str, insert_after: str
     return insertion, True
 
 
+def ensure_marker_block_before(text: str, marker: str, new_body: str, before_marker: str) -> tuple[str, bool]:
+    start = f"<!-- {marker}:start -->"
+    if start in text:
+        return replace_marker_block(text, marker, new_body)
+    before = f"<!-- {before_marker}:start -->"
+    anchor_idx = text.find(before)
+    if anchor_idx == -1:
+        return text, False
+    insertion = f"<!-- {marker}:start -->\n{new_body.rstrip()}\n<!-- {marker}:end -->\n\n"
+    updated = text[:anchor_idx] + insertion + text[anchor_idx:]
+    return updated, True
+
+
 def short_issue_label(issue_id: str) -> str:
     parts = issue_id.split("-", 2)
     if len(parts) >= 3:
@@ -429,6 +442,38 @@ def render_main_scope_table(
     return "\n".join(rows)
 
 
+def render_sprint_target_ids(sprint: SprintRecord) -> str:
+    return "\n".join(f"- `{item_id}`" for item_id in [*sprint.requirements, *sprint.bugs, *sprint.changes])
+
+
+def patch_sprint_target_id_list(text: str, sprint: SprintRecord) -> tuple[str, bool]:
+    target_body = render_sprint_target_ids(sprint)
+    if not target_body:
+        return text, False
+    lines = text.splitlines()
+    anchor_index: int | None = None
+    for index, line in enumerate(lines):
+        if "Sprint 目标编号列表" in line:
+            anchor_index = index
+            break
+    if anchor_index is None:
+        return text, False
+
+    start = anchor_index + 1
+    while start < len(lines) and lines[start].strip() == "":
+        start += 1
+    end = start
+    while end < len(lines) and re.match(r"^\s*[-*]\s+", lines[end]):
+        end += 1
+    while end < len(lines) and lines[end].strip() == "":
+        end += 1
+
+    replacement = ["", *target_body.splitlines(), ""]
+    updated_lines = lines[: anchor_index + 1] + replacement + lines[end:]
+    updated = "\n".join(updated_lines) + ("\n" if text.endswith("\n") else "")
+    return updated, updated != text
+
+
 def render_scope_summary_paragraphs(
     sprint: SprintRecord,
     derived_issues: dict[str, DerivedIssue],
@@ -468,6 +513,66 @@ def render_scope_summary_paragraphs(
     )
 
 
+def sprint_yaml_scalar(sprint: SprintRecord, key: str) -> str | None:
+    path = sprint.path / "sprint.yaml"
+    if not path.exists():
+        return None
+    for line in read_text(path).splitlines():
+        if line.startswith(" "):
+            continue
+        stripped = line.strip()
+        if stripped.startswith(f"{key}:"):
+            value = stripped.split(":", 1)[1].strip()
+            return value or None
+    return None
+
+
+def percent_text(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    try:
+        return f"{float(raw) * 100:.2f}%"
+    except ValueError:
+        return raw
+
+
+def render_capacity_table(sprint: SprintRecord) -> str:
+    capacity = sprint_yaml_scalar(sprint, "capacity_person_days") or ""
+    story_points = sprint_yaml_scalar(sprint, "estimated_story_points") or ""
+    person_days = sprint_yaml_scalar(sprint, "estimated_person_days") or ""
+    usage = percent_text(sprint_yaml_scalar(sprint, "capacity_usage"))
+    buffer_days = sprint_yaml_scalar(sprint, "fix_buffer_person_days") or ""
+    buffer_ratio = percent_text(sprint_yaml_scalar(sprint, "fix_buffer_ratio"))
+    return "\n".join(
+        [
+            "| 项 | 值 |",
+            "|---|---:|",
+            f"| 容量基线 | {capacity} 人天 |",
+            f"| 估算 | {story_points} SP / {person_days} 人天 |",
+            f"| 容量占用 | {usage} |",
+            f"| fix 缓冲 | {buffer_days} 人天 / {buffer_ratio} |",
+        ]
+    )
+
+
+def patch_capacity_section(text: str, sprint: SprintRecord) -> tuple[str, bool]:
+    section_match = re.search(r"(^## 3\. 工作量与容量\s*\n)(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if not section_match:
+        return text, False
+    section = section_match.group(2)
+    original_section = section
+    table_bounds = _find_first_markdown_table(section)
+    if not table_bounds:
+        return text, False
+    table_start, table_end = table_bounds
+    section = section[:table_start] + render_capacity_table(sprint).rstrip() + "\n" + section[table_end:]
+    note = sprint_yaml_scalar(sprint, "note")
+    if note:
+        section = re.sub(r"^容量门禁(?:通过|风险通过|阻断).*?$", note, section, count=1, flags=re.MULTILINE)
+    updated = text[: section_match.start(2)] + section + text[section_match.end(2) :]
+    return updated, section != original_section
+
+
 def _markdown_cells(line: str) -> list[str]:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
@@ -498,18 +603,36 @@ def _find_scope_main_table(section: str) -> tuple[int, int] | None:
     return None
 
 
+def _find_first_markdown_table(section: str) -> tuple[int, int] | None:
+    lines = section.splitlines(keepends=True)
+    offset = 0
+    for index, line in enumerate(lines[:-1]):
+        next_line = lines[index + 1]
+        if not line.lstrip().startswith("|"):
+            offset += len(line)
+            continue
+        if not re.match(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", next_line):
+            offset += len(line)
+            continue
+        end_index = index + 2
+        while end_index < len(lines) and lines[end_index].lstrip().startswith("|"):
+            end_index += 1
+        return offset, sum(len(item) for item in lines[:end_index])
+    return None
+
+
 def patch_main_scope_section(text: str, table: str, summary: str) -> tuple[str, bool]:
     section_match = re.search(r"(^## 2\. Scope\s*\n)(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     if not section_match:
         return text, False
     section = section_match.group(2)
     original_section = section
-    table_bounds = _find_scope_main_table(section)
+    table_bounds = _find_first_markdown_table(section)
     if not table_bounds:
         return text, False
     table_start, table_end = table_bounds
     section = section[:table_start] + table.rstrip() + "\n" + section[table_end:]
-    summary_pattern = re.compile(r"^BUG：.*?\n\n^Change：.*?(?=\n\n|$)", re.MULTILINE | re.DOTALL)
+    summary_pattern = re.compile(r"^(?:REQ：.*?)?BUG：.*?\n\n^Change：.*?(?=\n\n|$)", re.MULTILINE | re.DOTALL)
     if summary_pattern.search(section):
         section = summary_pattern.sub(summary, section, count=1)
     elif "BUG：" not in section and "Change：" not in section:
@@ -540,12 +663,20 @@ def patch_sprint_md(
     scope_summary = render_scope_summary_paragraphs(sprint, derived_issues, changes)
 
     text, main_scope_changed = patch_main_scope_section(text, main_scope_table, scope_summary)
+    text, target_list_changed = patch_sprint_target_id_list(text, sprint)
+    text, capacity_changed = patch_capacity_section(text, sprint)
 
     text, _ = ensure_marker_block(
         text,
         SCOPE_MARKERS["requirements"],
         req_table,
         "### 包含需求",
+    )
+    text, _ = ensure_marker_block_before(
+        text,
+        SCOPE_MARKERS["requirements"],
+        req_table,
+        SCOPE_MARKERS["changes"],
     )
     text, _ = replace_marker_block(text, SCOPE_MARKERS["requirements"], req_table)
 
@@ -554,6 +685,12 @@ def patch_sprint_md(
         SCOPE_MARKERS["bugs"],
         bug_table,
         "### 包含 BUG",
+    )
+    text, _ = ensure_marker_block_before(
+        text,
+        SCOPE_MARKERS["bugs"],
+        bug_table,
+        SCOPE_MARKERS["changes"],
     )
     text, _ = replace_marker_block(text, SCOPE_MARKERS["bugs"], bug_table)
 
@@ -577,6 +714,10 @@ def patch_sprint_md(
     detail = "Scope tables + note"
     if main_scope_changed:
         detail += " + main scope table"
+    if target_list_changed:
+        detail += " + target list"
+    if capacity_changed:
+        detail += " + capacity table"
     if milestone_changed:
         detail += " + milestone dates"
     return PatchResult(str(path.relative_to(ROOT)), changed, detail)
@@ -785,7 +926,9 @@ def append_workflow_event_record(
 ) -> str:
     if "## 变更记录" not in text or not event or not change_id:
         return text
-    if derived.linked_change != change_id:
+    if derived.linked_change and derived.linked_change != change_id:
+        return text
+    if not derived.linked_change and change_id not in change_status_map:
         return text
     change_status = change_status_map.get(change_id)
     if event == "opsx.apply" and change_status in {"applied", "in_progress"}:
@@ -813,6 +956,25 @@ def append_workflow_event_record(
     if table_header.search(text):
         return table_header.sub(rf"\1{table_row}", text, count=1)
     return text.replace("## 变更记录\n\n", f"## 变更记录\n\n- {stamp} {command}：{description}\n", 1)
+
+
+def update_related_openspec_section(text: str, change_status_map: dict[str, str]) -> str:
+    if "## 关联 OpenSpec" not in text:
+        return text
+    section_match = re.search(r"(^## 关联 OpenSpec\s*\n)(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if not section_match:
+        return text
+    section = section_match.group(2)
+    original_section = section
+    for change_id, status in change_status_map.items():
+        section = re.sub(
+            rf"`{re.escape(change_id)}`（[^）]*）",
+            f"`{change_id}`（{status}）",
+            section,
+        )
+    if section == original_section:
+        return text
+    return text[: section_match.start(2)] + section + text[section_match.end(2) :]
 
 
 def normalize_change_record_table(text: str) -> str:
@@ -877,6 +1039,7 @@ def patch_issue_trace(
     change_status_map: dict[str, str],
     event: str | None = None,
     focus_change: str | None = None,
+    sprint_id: str | None = None,
     write: bool = True,
 ) -> PatchResult:
     trace_path = issue.path / "trace.md"
@@ -903,6 +1066,8 @@ def patch_issue_trace(
         current_block = block
         for change_id, status in change_status_map.items():
             block = update_openspec_changes_in_block(block, change_id, status)
+        if sprint_id:
+            block = update_yaml_scalar(block, "iteration", sprint_id)
         if not block.endswith("\n"):
             block += "\n"
         if block != current_block:
@@ -913,6 +1078,8 @@ def patch_issue_trace(
         block = yaml_match.group(1).rstrip("\n") + "\n"
         current_block = block
         block = update_yaml_scalar(block, "status", derived.display_status)
+        if sprint_id:
+            block = update_yaml_scalar(block, "iteration", sprint_id)
         for change_id, status in change_status_map.items():
             block = update_openspec_changes_in_block(block, change_id, status)
         if not block.endswith("\n"):
@@ -939,6 +1106,7 @@ def patch_issue_trace(
             text = text.rstrip() + f"\n{entry}\n"
 
     text = normalize_change_record_table(text)
+    text = update_related_openspec_section(text, change_status_map)
     text = append_workflow_event_record(
         text,
         event=event,

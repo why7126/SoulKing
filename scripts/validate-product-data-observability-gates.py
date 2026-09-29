@@ -132,8 +132,18 @@ def validate_entry_files() -> list[str]:
 
 
 def collect_change(change_id: str) -> TargetScan:
-    base = ROOT / "openspec" / "changes" / change_id
-    return scan_target(f"change:{change_id}", markdown_files(base))
+    files: list[Path] = []
+    files.extend(markdown_files(ROOT / "openspec" / "changes" / change_id))
+    for archive_root in (
+        ROOT / "openspec" / "archive",
+        ROOT / "openspec" / "changes" / "archive",
+    ):
+        if not archive_root.exists():
+            continue
+        for candidate in sorted(archive_root.glob(f"*-{change_id}")):
+            if candidate.is_dir():
+                files.extend(markdown_files(candidate))
+    return scan_target(f"change:{change_id}", sorted(set(files)))
 
 
 def collect_req(req_id: str) -> TargetScan:

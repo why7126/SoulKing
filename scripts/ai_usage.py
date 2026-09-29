@@ -1173,7 +1173,12 @@ def _status_payload(
         "usage_matrices": usage_matrices or {},
         "recommended_action": None
         if status == "present" and resolved_usage_mode == USAGE_MODE_ACTUAL
-        else f"Run `python scripts/extract-ai-usage.py --session-jsonl <local-session.jsonl> --sprint <sprint-id>` and re-check {path.name}.",
+        else (
+            "Run `python scripts/extract-ai-usage.py --session-jsonl <local-session.jsonl> "
+            "--manual-map <manual-map.json> --sprint <sprint-id> --json`, then rerun "
+            "`python scripts/generate-sprint-fact-sheet.py --sprint <sprint-id> --summary` "
+            f"and re-check {path.name}."
+        ),
     }
     payload["fresh_gate"] = sprint_snapshot_fresh_gate(payload)
     return payload
@@ -1643,7 +1648,10 @@ def post_command_hook(
             },
             "warnings": [warning],
             "warning_count": 1,
-            "recommended_action": "Provide --session-jsonl or set AI_USAGE_SESSION_JSONL to build a redacted usage fact source.",
+            "recommended_action": (
+                "Provide --session-jsonl or set AI_USAGE_SESSION_JSONL to build a redacted usage fact source; "
+                "add --manual-map when automatic attribution cannot identify the target REQ/BUG/Change/Sprint."
+            ),
         }
     if not resolved_session.exists():
         return {
@@ -1659,7 +1667,7 @@ def post_command_hook(
             },
             "warnings": ["session-jsonl-not-found"],
             "warning_count": 1,
-            "recommended_action": "Check the local Codex session path and rerun the hook with --session-jsonl.",
+            "recommended_action": "Check the local Codex session path and rerun the hook with --session-jsonl and, if needed, --manual-map.",
         }
 
     records, parse_warnings = parse_session_jsonl(resolved_session, manual_map)
@@ -1722,7 +1730,10 @@ def post_command_hook(
     status = "ok" if usage_mode == USAGE_MODE_ACTUAL else "warning"
     recommended_action = None
     if usage_mode != USAGE_MODE_ACTUAL:
-        recommended_action = "Inspect warnings and rerun with a session containing token_count events if actual usage is required."
+        recommended_action = (
+            "Inspect warnings and rerun with a session containing token_count events; "
+            "use --manual-map for turn_hash/source_session_hash attribution gaps if actual usage is required."
+        )
     return {
         "status": status,
         "usage_mode": usage_mode,
@@ -1759,13 +1770,32 @@ def compact_post_command_summary(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--session-jsonl", type=Path)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "Manual map JSON is a local attribution aid for recovery from estimated_fallback, "
+            "missing/stale/failed Sprint snapshots, or automatic attribution gaps. Key each entry by "
+            "turn_hash for one command turn or source_session_hash for a whole local session. Supported "
+            "fields: requirements, bugs, changes, sprint_id, workflow_event, release_sprints, "
+            "release_version, post_command_target, attribution_confidence. Keep raw session JSONL local; "
+            "do not persist prompts, system/developer instructions, secrets, .env content, local absolute "
+            "paths, or full tool outputs in the map or generated artifacts."
+        ),
+    )
+    parser.add_argument("--session-jsonl", type=Path, help="Local Codex session JSONL; remains local-only and is never copied into data/ai-usage.")
     parser.add_argument("--out-dir", type=Path, default=Path("data/ai-usage"))
     parser.add_argument("--sprint")
     parser.add_argument("--release-sprint", action="append", default=[])
     parser.add_argument("--release")
-    parser.add_argument("--manual-map", type=Path)
+    parser.add_argument(
+        "--manual-map",
+        type=Path,
+        help=(
+            "Local JSON keyed by turn_hash or source_session_hash to add requirements/bugs/changes, "
+            "sprint_id, workflow_event, release_sprints, release_version, post_command_target, and "
+            "attribution_confidence."
+        ),
+    )
     parser.add_argument("--post-command-hook", action="store_true")
     parser.add_argument("--workflow-event")
     parser.add_argument("--req", action="append", default=[])

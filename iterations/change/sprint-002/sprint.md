@@ -1,7 +1,7 @@
 ---
-note: workflow-sync — workflow-sync 自动同步 — 1/1 Change archived；0 applied；Sprint `planning`
+note: workflow-sync — workflow-sync 自动同步 — 2/2 Change archived；0 applied；Sprint `planning`
 created_at: 2026-08-27 08:54:38
-updated_at: 2026-08-27 09:23:50
+updated_at: 2026-08-31 10:18:42
 ---
 
 # sprint-002 Sprint 容量治理加固
@@ -12,34 +12,49 @@ updated_at: 2026-08-27 09:23:50
 
 Sprint 目标编号列表：
 
+- `REQ-0018-ai-usage-manual-map-refresh`
 - `tighten-soulking-sprint-capacity-governance`
+- `update-ai-usage-manual-map-refresh`
 
 ## 2. Scope
 
 | 类型 | 编号 | 标题 | 状态 | 估算 | 说明 |
 |---|---|---|---|---:|---|
+| REQ | REQ-0018-ai-usage-manual-map-refresh | 固化 AI Usage 手动映射与刷新流程 | done | 3 人天 | archived `update-ai-usage-manual-map-refresh`（2026-08-31 09:18:00） |
 | Change | tighten-soulking-sprint-capacity-governance | tighten soulking sprint capacity governance | archived | 2 人天 | archived `tighten-soulking-sprint-capacity-governance`（2026-08-27 09:23:32） |
+
+<!-- workflow-sync:scope-requirements:start -->
+| 编号 | 名称 | 优先级 | 状态 | 说明 |
+|---|---|---|---|---|
+| REQ-0018 | 固化 AI Usage 手动映射与刷新流程 | P2 | done | archived `update-ai-usage-manual-map-refresh`（2026-08-31 09:18:00） |
+<!-- workflow-sync:scope-requirements:end -->
+
+<!-- workflow-sync:scope-bugs:start -->
+| 编号 | 名称 | 优先级 | 状态 | 说明 |
+|---|---|---|---|---|
+<!-- workflow-sync:scope-bugs:end -->
 
 <!-- workflow-sync:scope-changes:start -->
 | Change ID | 关联需求 | 状态 | Sprint 目标 |
 |---|---|---|---|
 | `tighten-soulking-sprint-capacity-governance` | — | archived | archived `tighten-soulking-sprint-capacity-governance`（2026-08-27 09:23:32） |
+| `update-ai-usage-manual-map-refresh` | REQ-0018-ai-usage-manual-map-refresh | archived | archived `update-ai-usage-manual-map-refresh`（2026-08-31 09:18:00） |
 <!-- workflow-sync:scope-changes:end -->
 
-REQ：无 已纳入正式范围；BUG：无 已纳入正式范围，优先级高于新增体验能力；当前完成度与验收风险以 Scope 表状态、关联 Change 和 acceptance-report 为准。
+REQ：`REQ-0018` 已纳入正式范围；BUG：无 已纳入正式范围，优先级高于新增体验能力；当前完成度与验收风险以 Scope 表状态、关联 Change 和 acceptance-report 为准。
 
-Change：已回填 0 个范围项关联 Change，另有 1 个纯 Change；1 archived，0 applied，0 in_progress，0 proposed。所有已纳入范围项均已关联 Change；执行开发与归档时以 Scope 表逐项状态为准。
+Change：已回填 1 个范围项关联 Change，另有 1 个纯 Change；2 archived，0 applied，0 in_progress，0 proposed。所有已纳入范围项均已关联 Change；执行开发与归档时以 Scope 表逐项状态为准。
 
 ## 3. 工作量与容量
 
 | 项 | 值 |
 |---|---:|
 | 容量基线 | 30 人天 |
-| 估算 | 3 SP / 2 人天 |
-| 容量占用 | 6.67% |
-| fix 缓冲 | 28 人天 / 93.33% |
+| 估算 | 6 SP / 5 人天 |
+| 容量占用 | 16.67% |
+| fix 缓冲 | 25 人天 / 83.33% |
 
-容量门禁通过。本 Sprint 从 `sprint-001` 的超载状态中拆出，只承载当前治理学习应用；项目默认 Sprint 容量基线已调整为 30 人天。
+容量门禁通过：估算 5/30 人天，占用 16.67%，fix 缓冲 25 人天 / 83.33%。
 
 ## 4. 里程碑
 
